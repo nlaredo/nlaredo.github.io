@@ -1,0 +1,1471 @@
+<!doctype html>
+<html>
+<head>
+  <title>PlayMIDI</title>
+  <meta charset=utf-8 />
+  <meta name="copyright" content="Nathan Laredo" />
+  <meta name="author" content="Nathan Laredo" />
+  <style>
+    body,html,canvas { border:0; margin:0; padding:0; overflow:hidden; }
+    canvas { background:#007; }
+    #config {
+      position:fixed; top:75px; right:25px; bottom:25px; left:25px;
+      border:3px solid #ddf; background:#00007777; color:#eef;
+      padding:25px; font:1em sans-serif; overflow-y:auto;
+    }
+    .ccontainer {
+      display:grid;
+      grid-template-rows: repeat(4, 2em);
+      grid-template-columns: repeat(4, 1fr);
+      grid-auto-flow: column;
+    }
+    .container2 {
+      display:grid;
+      grid-template-rows: repeat(3, 2em);
+      grid-template-columns: repeat(3, 1fr);
+      grid-auto-flow: column;
+    }
+    a { text-decoration:none }
+    a:link { color:#ff4; }
+    a:visited { color:#f44; }
+    a:hover { text-decoration:underline; }
+    a:active { background:#f44; color:#ffe; }
+    h1,h2,h3,h4,p { text-align: center }
+    input { width:4em; }
+    label,input { margin:1px; }
+    #license { position:fixed; bottom:25px; right:25px;
+      color:#00f; padding:25px; }
+    #license a { color:#00f; }
+  </style>
+</head>
+<body>
+<pre id="license">
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <a
+href="https://www.gnu.org/licenses/">https://www.gnu.org/licenses/</a>.
+</pre>
+<canvas id="keyboard" onclick="startme(event)"></canvas>
+<div id="config">
+<h1>PlayMIDI Settings</h1>
+<h4>v20190813 -- Follow development at:
+<a href="http://twitch.tv/nil4k">twitch.tv/nil4k</a>
+and <a href="http://github.com/nlaredo">GitHub</a>
+and <a href="http://youtube.com/NathanILaredo">YouTube</a></h4>
+<p>Tap or click the area above this window to open this config window
+later...</p>
+<form id="cfgok" action="#">
+<h2><input type="submit" value="OK"></h2>
+<div class="container2">
+<div><label><input name="soundon" type="checkbox" value="soundon"
+checked> Generate Sounds</input></label></div>
+<div><label><input name="showflames" type="checkbox" value="showflames">
+Generate Flames</input></label></div>
+<div><label><input name="showdebug" type="checkbox" value="showdebug">
+Show MIDI Events</input></label></div>
+<div><label><input name="showoctaves" type="checkbox" value="showoctaves"
+defaultChecked="false"> Show Octave Lines</input></label></div>
+<div><label><input name="benddn" type="number"
+value="-12" min="-24" max="-1"> - Pitch Bend</input></label></div>
+<div><label><input name="bendup" type="number"
+value="2" min="1" max="24"> + Pitch Bend</input></label></div>
+<div><label><input name="touchchan" type="number" value="2"
+min="1" max="16"> Touch Event Channel</input></label></div>
+<div><label><input name="mousechan" type="number" value="3"
+min="1" max="16"> Mouse Event Channel</input></label></div>
+<div><label><input name="keychan" type="number" value="4"
+min="1" max="16"> PC Key Event Channel</input></label></div>
+</div>
+<h4>Channel Colors </h4>
+<div class="ccontainer">
+<div><label><input name="c1" type="color" value="#ff0000">
+Ch 1</input></label></div>
+<div><label><input name="c2" type="color" value="#0000ff">
+Ch 2</input></label></div>
+<div><label><input name="c3" type="color" value="#ff00ff">
+Ch 3</input></label></div>
+<div><label><input name="c4" type="color" value="#00ff00">
+Ch 4</input></label></div>
+<div><label><input name="c5" type="color" value="#ffff00">
+Ch 5</input></label></div>
+<div><label><input name="c6" type="color" value="#00ffff">
+Ch 6</input></label></div>
+<div><label><input name="c7" type="color" value="#ff0000">
+Ch 7</input></label></div>
+<div><label><input name="c8" type="color" value="#3f00c0">
+Ch 8</input></label></div>
+<div><label><input name="c9" type="color" value="#ff00c0">
+Ch 9</input></label></div>
+<div><label><input name="c10" type="color" value="#3fc000">
+Ch 10</input></label></div>
+<div><label><input name="c11" type="color" value="#ffc000">
+Ch 11</input></label></div>
+<div><label><input name="c12" type="color" value="#3fc0c0">
+Ch 12</input></label></div>
+<div><label><input name="c13" type="color" value="#803f00">
+Ch 13</input></label></div>
+<div><label><input name="c14" type="color" value="#003f80">
+Ch 14</input></label></div>
+<div><label><input name="c15" type="color" value="#803f80">
+Ch 15</input></label></div>
+<div><label><input name="c16" type="color" value="#008000">
+Ch 16</input></label></div>
+</div>
+<label><input name="default" type="button" value="Default"
+ onclick="makeccolor()"> Reset colors</label></br>
+</input>
+</form>
+</div>
+<script type="text/javascript">
+//<![CDATA[
+var license = document.getElementById("license");
+var canvas = document.getElementById("keyboard");
+var config = document.getElementById("config");
+var cfgok = document.getElementById("cfgok");
+var ctx = canvas.getContext("2d");
+var cfgform = document.forms['cfgok'];
+
+var context=null;	// the Web Audio "context" object
+var midiAccess=null;	// the MIDIAccess object.
+var voice = [];         // tracking of synth voices
+var lfo;                // for tracking synth LFO
+var changain;           // channel gain node
+var lfout;              // for drawing LFO data
+var moddepth = 50;      // mod depth range in cents (midi default 50 cents)
+var attack=0.01;	// attack speed
+var decay=0.05;	        // decay speed
+var sustain=0.75;       // sustain level
+var release=0.15;	// release speed
+var mastertune=440;
+var maxVoices=16;
+var soundon = true;
+var midienabled = false;
+var hold1 = false;      // cc64
+var sostenuto = false;  // cc66
+var sostenutolist = []; // notes on at the time sostenuto pressed
+var soft = false;       // cc67
+var showoctaves = false;
+var showflames = false;
+var showdebug = false;
+var showconfig = true;
+var ccolor = [];
+function hexrgb(r,g,b) {
+  return "#" + ("0" + r.toString(16)).slice(-2) +
+    ("0" + g.toString(16)).slice(-2) +
+    ("0" + b.toString(16)).slice(-2);
+}
+// try to make 16 visually distinct colors, no black, no white
+function makeccolor() {
+  var c = 0;
+  ccolor = [];
+  // make default color table
+  for (var i = 1; c < 16; i++) {
+    if ((i & 7) == 0 || (i & 7) == 7)
+      continue; // skip black and white
+    var b3 = (i & 8) ? 63 : 0;
+    var b4 = (i & 16) ? 127 : 0;
+    var r = (i & 1) ? 255 - b4 : b3; 
+    var g = (i & 2) ? 255 - b3 - b4 : (i & 16) ? 63 : 0;
+    var b = (i & 4) ? 255 - b3 - b4 : (i & 16) ? 63 : 0;
+    var color = hexrgb(r,g,b);
+    ccolor.push(color);
+    // update form color selector
+    c++;
+    cfgform["c" + c].value = color;
+  }
+}
+makeccolor();
+var touchchan = 1;
+var mousechan = 2;
+var keychan = 3;
+
+var noteboxes = [];
+var keyboxes = [];
+var particles = [];
+var gravity = 0.6;
+var mididbg = [];
+var mididev = '(midi disabled)';
+var notefrac = 0;  // for tracking pitchbend
+var bendmult = 1;  // for playing pitchbend
+var bendup = 2;  // pitchbend range in semitones
+var benddn = 12;  // pitchbend range in semitones
+var keybed = 69.81818182; // 128 note keyboard width in inches
+var keydepth = 6; // keyboard depth in inches, always 6 for full size keys
+var bkeydepth = 3.5; // black key depth in inches, 3.5 for full size keys
+var keyscale = 0.0;  // allow resizing of keyboard, 0 = scale to 88key
+var keypan = 0;  // allow touch interface panning of the keyboard
+var notecount = 0; // counts number of note on events for easter eggs
+// note, this should probably be 128 keys unless you want to break everything
+var kct = 128; // note: 68.818 inches for 128 keys, 48 inches for 88 keys
+var bw;  // black key width in pixels
+var kh;  // keyboard height in pixels
+var bkh; // black key height in pixels
+var dy;  // pixels to move up per animation frame
+var blackimg = null;
+var whiteimg = null;
+var noiseimg = null;
+var fireimg1 = null;
+var fireimg2 = null;
+
+canvas.crossOrigin = null;
+resize();
+var blackkey = new Image();
+blackkey.crossOrigin = null;
+blackkey.onload = function () { blackimg = blackkey; };
+blackkey.src = "blackkey.png";
+var whitekey = new Image();
+whitekey.crossOrigin = null;
+whitekey.onload = function () { whiteimg = whitekey; };
+whitekey.src = "whitekey.png";
+
+cfgform.addEventListener('submit', startme, false);
+function toggleconfig(event) {
+  // prevent form submit
+  if (event) event.preventDefault();
+  if (showconfig && !cfgform.checkValidity()) {
+    cfgform.reportValidity();
+    return false;  // prevent dismiss/submit
+  }
+  if (showconfig) {
+    // validated form user is asking to dismiss
+    setSound(cfgform["soundon"].checked);
+    showdebug = cfgform["showdebug"].checked;
+    showoctaves = cfgform["showoctaves"].checked;
+    benddn = cfgform["benddn"].value;
+    bendup = cfgform["bendup"].value;
+    touchchan = cfgform["touchchan"].value - 1;
+    mousechan = cfgform["mousechan"].value - 1;
+    keychan = cfgform["keychan"].value - 1;
+    for (var i = 0; i < 15; i++) {
+      ccolor[i] = cfgform["c"+(i+1)].value;
+    }
+    showflames = cfgform["showflames"].checked;
+    if (showflames)
+      resize();
+  }
+  showconfig = !showconfig;
+  config.style.display = showconfig ? 'block' : 'none';
+  license.style.display = 'none';
+  return false;  // prevent form submit
+}
+function dbRatio(dB) {
+  if (dB < 0)
+    return Math.pow(10, dB / 20);
+  return 1.0-Math.pow(10, -dB / 20);
+}
+function setSound(value) {
+  if (soundon == value)
+    return;
+  soundon = value;
+  for (var i = 0; i < maxVoices; i++) {
+    if (voice[i].note >= 0) {
+      voice[i].env.gain.cancelScheduledValues(0);
+      voice[i].env.gain.setTargetAtTime(0.0, 0, release);
+    }
+  }
+  lfo.env.gain.value = 0;
+}
+function findNote(note) {
+  for (i = 0; i < maxVoices; i++) {
+    if (voice[i].note == note)
+      return i;
+  }
+  return 0;
+}
+var steal = 0;
+function nextNote(note) {
+  var reuse = -1;
+  var oldest = -1;
+  for (var i = 0; i < maxVoices; i++) {
+    if (voice[i].note == note) {
+      if (reuse < 0 ||
+        (reuse >= 0 && voice[i].start < voice[reuse].start))
+        reuse = i;  // prefer oldest reuse
+    }
+    if (voice[i].note < 0) {
+      if (oldest < 0)
+        oldest = i;
+      if (voice[i].start < voice[oldest].start)
+        oldest = i;
+    }
+  }
+  // if oldest note is in use, prefer to reuse existing same note
+  if (oldest < 0 && reuse >= 0)
+    return reuse;
+  if (oldest < 0) {  // no unused voice, none match current note
+    oldest = steal;
+    steal += 1;  // round-robin which voice is stolen
+    steal %= maxVoices;
+  }
+  return oldest;
+}
+function noteFreq(note) {
+  return mastertune * Math.pow(2,(note-69)/12);
+}
+
+function pitchBend(value) {
+  var bendrange = value < 8192 ? benddn : bendup;
+  notefrac = bendrange * (value - 8192.0) / 8192.0;
+  bendmult= Math.pow(2, (bendrange / 12) * (value - 8192.0) / 8192.0);
+  if (soundon) {
+    // modify all the playing notes by the bend value
+    for (var i = 0; i < maxVoices; i++) {
+      if (voice[i].note >= 0) {
+        voice[i].osc.frequency.setValueAtTime(voice[i].freq * bendmult, 0);
+      }
+    }
+  }
+}
+function stopDTMF(keyentry) {
+  var v1 = keyentry.t1;
+  var v2 = keyentry.t2;
+  keyentry.t1 = keyentry.t2 = -1;
+  [v1,v2].forEach(function(v) {
+    if (v >= 0) {
+      // immediate stop to tones
+      voice[v].env.gain.cancelScheduledValues(0);
+      voice[v].env.gain.setTargetAtTime(0.0, 0, 0.005);
+      voice[v].note = -1;
+    }
+  });
+}
+function startDTMF(keyentry, plan) {
+  var v = nextNote(256);
+  var v1 = plan.r1;
+  var v2 = plan.r2;
+  voice[v].note = 256;
+  voice[v].freq = plan.t1;
+  voice[v].osc.type = 'sine';
+  voice[v].osc.frequency.setValueAtTime(voice[v].freq, 0);
+  voice[v].start = performance.now();
+  voice[v].env.gain.cancelScheduledValues(0);
+  voice[v].env.gain.setTargetAtTime(v1, 0, 0.005);
+  keyentry.t1 = v;
+  v = nextNote();
+  voice[v].note = 256;
+  voice[v].freq = plan.t2;
+  voice[v].osc.type = 'sine';
+  voice[v].osc.frequency.setValueAtTime(voice[v].freq, 0);
+  voice[v].start = performance.now();
+  voice[v].env.gain.cancelScheduledValues(0);
+  voice[v].env.gain.setTargetAtTime(v2, 0, 0.005);
+  keyentry.t2 = v;
+}
+function startNote(channel, note, velocity) {
+  var i = nextNote(note);
+  voice[i].note = note;
+  voice[i].freq = noteFreq(note);
+  voice[i].hold1 = false;
+  voice[i].sostenuto = false;
+  voice[i].osc.frequency.setValueAtTime(voice[i].freq * bendmult, 0);
+  voice[i].osc.type = 'square';
+  voice[i].start = performance.now();
+  voice[i].env.gain.cancelScheduledValues(0);
+  voice[i].env.gain.setTargetAtTime((velocity/127), 0, attack);
+  voice[i].env.gain.setTargetAtTime((sustain * velocity/127),
+    context.currentTime + attack, decay);
+  // 9 to 3.3 seconds of sustain to decay to -60dB
+  var sustime = 9 * Math.exp(-note/128);
+  sustime = (sustime * 2) / 10;  // convert to time constant
+  voice[i].env.gain.setTargetAtTime(0.001 / 127,
+    context.currentTime + attack + decay, sustime); 
+}
+function stopSustain() {
+  for (var i = 0; i < maxVoices; i++) {
+    if ((voice[i].hold1 && !hold1 && !voice[i].sostenuto) ||
+       (voice[i].sostenuto && !sostenuto)) {
+      voice[i].sostenuto = false;
+      voice[i].hold1 = false;
+      voice[i].env.gain.cancelScheduledValues(0);
+      voice[i].env.gain.setTargetAtTime(0.0, 0, release);
+      voice[i].note = -1;
+    }
+  }
+}
+function stopNote(channel, note) {
+  var i = findNote(note);
+  if (i >= 0) {
+    voice[i].hold1 = hold1;
+    if (sostenuto) {
+      voice[i].sostenuto = (sostenutolist.indexOf(note) >= 0);
+    }
+    voice[i].note = -1;  // mark for early reuse even if sustained
+    if (voice[i].hold1 || voice[i].sostenuto) {
+      return;
+    }
+    voice[i].env.gain.cancelScheduledValues(0);
+    voice[i].env.gain.setTargetAtTime(0.0, 0, release);
+  }
+}
+
+function resize()
+{
+  if (canvas.width != innerWidth) {
+    keyscale = 0; // force reset to 88 keys on window resize/rotate
+  }
+  canvas.width = innerWidth;
+  canvas.height = innerHeight;
+  makekeys();
+  if (showflames) {
+    noiseimg = new ImageData(innerWidth, innerHeight - kh);
+    fireimg1 = new ImageData(innerWidth, innerHeight - kh);
+    fireimg2 = new ImageData(innerWidth, innerHeight - kh);
+    makenoiseimage();
+  }
+}
+
+function makekeys()
+{
+  if (keyscale <= 0) {
+    // on reload, set initial scale to show 88, set keypan to note 21
+    keyscale = 128.0 / 88.0;
+    keypan = -21 * innerWidth * keyscale / 128;
+  }
+  var sw = innerWidth * keyscale;
+  var sh = innerHeight * keyscale;
+  var kw = sw / (kct * 7 / 12);  // white key width (px)
+
+  bw = sw / kct;  // black key width in pixels
+  kh = Math.round(keydepth * sw / keybed); // keyboard height (px)
+  bkh = Math.round(bkeydepth * sw / keybed); // black height (px)
+  dy =  innerHeight / 256;  // move 1/256 window height per frame
+  var wpos = 0;
+
+  keyboxes = [];
+  for (var i = 0; i < kct; i++) {
+    var n = i % 12;
+    var bk = (n == 1 || n == 3 || n == 6 || n == 8 || n == 10);
+    var pnote = (i >= 21 && i <= 108); // is in standard piano range?
+    var x = bk ? bw * i : wpos * kw;
+    var y = innerHeight - kh;
+    var w = (bk ? bw : kw);
+    var h =  (bk ? bkh : kh);
+    var fill = (bk ? '#000' : '#fff');
+    var pfill = ccolor[0]; // replaced with channel color later
+
+    keyboxes.push({
+      x: x,
+      y: y,
+      w: w,
+      h: h,
+      v: 0,
+      note: i,
+      pressed: false,
+      isBlack: bk,
+      fill: fill,
+      held: false,
+      ptime: 0,
+      sfill: '#fff',
+      pfill: pfill,
+      pnote: pnote,
+    });
+    wpos += bk ? 0 : 1;
+  }
+}
+
+var mousenote = -1;
+var touchnotes = [];
+
+function getkey(x,y) {
+  var note = -1;
+  x -= keypan;
+
+  // find which black key was pressed
+  for (var i = 0, j = keyboxes.length; i < j && note < 0; i++) {
+    if (!keyboxes[i].isBlack) // check only black key overlays first
+      continue;
+    if (x >= keyboxes[i].x &&
+        x < keyboxes[i].x + keyboxes[i].w &&
+        y >= keyboxes[i].y &&
+        y < keyboxes[i].y + keyboxes[i].h) {
+      note = keyboxes[i].note;
+    }
+  }
+  // find which white key was pressed
+  for (var i = 0, j = keyboxes.length; i < j && note < 0; i++) {
+    if (keyboxes[i].isBlack) // already checked black keys
+      continue;
+    if (x >= keyboxes[i].x &&
+        x < keyboxes[i].x + keyboxes[i].w &&
+        y >= keyboxes[i].y &&
+        y < keyboxes[i].y + keyboxes[i].h) {
+      note = keyboxes[i].note;
+    }
+  }
+  return note;
+}
+
+function mousemove(event) {
+  if (showconfig) return;
+  event.preventDefault();
+  if (mousenote < 0) {
+    return;
+  }
+  var note = getkey(event.clientX, event.clientY);
+  if (note == mousenote) {
+    return;
+  }
+  if (mousenote >= 0) {
+    noteOff(mousechan, mousenote, 64);
+    mousenote = -1;
+  }
+  if (note >= 0) {
+    noteOn(mousechan, note, 127);
+    mousenote = note;
+  }
+}
+
+function mouseup(event) {
+  event.preventDefault();
+  if (event.clientY < 75) {  // sound on/off if clicked in debug area
+    toggleconfig(event);
+  }
+  if (mousenote >= 0) {
+    noteOff(mousechan, mousenote, 64);
+    mousenote = -1;
+  }
+}
+function mousedown(event) {
+  if (showconfig) return;
+  event.preventDefault();
+  var note;
+  if (mousenote >= 0) {
+    noteOff(mousechan, mousenote, 64);
+    mousenote = -1;
+  }
+  // ignore if not in keyboard area
+  if (event.y < innerHeight - kh) {
+    // todo: maybe trigger some pointer based effects in scrolly area
+    return;
+  }
+  note = getkey(event.clientX, event.clientY);
+  if (note >= 0) {
+    noteOn(mousechan, note, 127);
+    mousenote = note;
+  }
+}
+function capkeyscale(scale, ypos)
+{
+  // cap scale at y position at ypos or 90% of window height
+  ypos = Math.max(0.1 * innerHeight, ypos);
+  if (scale * kh > innerHeight - ypos - 25) {
+    scale = (innerHeight - ypos - 25) / kh;
+  }
+  if (scale * keyscale < 1.0) {
+    scale = 1.0 / keyscale;
+  }
+  return scale;
+}
+function updatekeypan(oldx, scale, x)
+{
+  keypan -= oldx;
+  keypan *= scale;
+  keypan += x;
+  if (keypan < innerWidth - 128 * bw * scale)
+    keypan = innerWidth - 128 * bw * scale;
+  if (keypan > 0)
+    keypan = 0;
+}
+function mousewheel(event) {
+  if (showconfig) return;
+  event.preventDefault();
+  var delta = event.deltaY;
+  if (event.shiftKey) { // wheel + shift = pan left/right (deltaY)
+    updatekeypan(0, 1.0, delta / keyscale);
+  } else { // wheel = touchpad pan up/down (deltaY)
+    var scale = (kh + delta) / kh;
+    // wheel + ctrlKey = touchpad pinch zoom (deltaY)
+    if (event.ctrlKey) {
+      scale = (delta < 0) ? 1.05 : 0.95;
+    }
+    var x = event.clientX;
+    var pscale = scale;
+    scale = capkeyscale(scale, 0);
+    updatekeypan(x, scale, x);
+    keyscale *= scale;
+    resize();
+  }
+}
+
+var oldx = -1;
+var olddist = -1;
+var oldxc = -1;
+
+function handletouch(event) {
+  if (showconfig) {
+    return;  // dismiss will be handled by default mouse emulation
+  }
+  event.preventDefault();
+  var notes = [];
+  var count = event.touches.length;
+  if (count == 1) {
+    if (oldxc < 0 && event.touches[0].clientY < 75) {
+      toggleconfig();
+      return;
+    }
+    if (event.touches[0].clientY < innerHeight - kh - 2) {
+      // have a single touch above the kbd, track for 1 touch kbd panning
+      var x = event.touches[0].clientX;
+      if (oldx >= 0) {
+        updatekeypan(oldx, 1.0, x);
+      }
+      oldx = x;
+      return;
+    }
+  }
+  oldx = -1;
+  if (count == 2) {
+    var kbd = innerHeight - kh - 2;
+    if (event.touches[0].clientY < kbd && event.touches[1].clientY < kbd) {
+      // allow two touch keyboard scale and pan
+      var x1 = event.touches[0].clientX;
+      var y1 = event.touches[0].clientY;
+      var x2 = event.touches[1].clientX;
+      var y2 = event.touches[1].clientY;
+      var d = Math.sqrt((x1 - x2) * (x1 - x2) + (y1 - y2) * (y1 - y2));
+
+      var ymax = Math.max(y1, y2);
+      if (olddist >= 0) {
+        var scale = d / olddist;
+        scale = capkeyscale(scale, ymax - 25);
+        // try to land touch over same relative place on keyboard
+        updatekeypan(oldxc, scale, x2);
+
+        keyscale *= scale;
+
+        resize();
+      }
+      olddist = d;
+      oldxc = x2;
+      return;
+    }
+  }
+  olddist = -1;
+  oldxc = -1;
+  for (var i = 0; i < count; i++) {
+    var note = getkey(event.touches[i].clientX, event.touches[i].clientY);
+    if (note >= 0) {
+      var force = event.touches[i].force;
+      if (force <= 0) // if unknown or undefined, define 0.5 default
+        force = 0.5;
+      notes.push(note);
+      if (touchnotes.indexOf(note) < 0) {
+        noteOn(touchchan, note, Math.round(force * 127));
+        touchnotes.push(note);
+      }
+    }
+  }
+  // figure out if any touched notes went away or changed
+  for (var i = touchnotes.length - 1; i >= 0; i--) {
+    if (notes.indexOf(touchnotes[i]) < 0) {
+      noteOff(touchchan, touchnotes[i], 64);
+    }
+  }
+  touchnotes = [...notes];
+}
+
+var keyspressed = [];
+var shiftpressed = false;
+var keytranspose = 60;
+// table of event.code mapping to octave note offset
+// event.code names should be independent of keyboard layout
+// see: https://w3c.github.io/uievents-code/#key-alphanumeric-writing-system
+var keytable = [
+  { c:'Space', n:-12, m:-1 },
+  { c:'KeyA', n:0, m:-1 },
+  { c:'IntlBackslash', n:-1, m:-1 },
+  { c:'KeyZ', n:0, m:-1 },
+  { c:'KeyS', n:1, m:-1 },
+  { c:'KeyX', n:2, m:-1 },
+  { c:'KeyD', n:3, m:-1 },
+  { c:'KeyC', n:4, m:-1 },
+  { c:'KeyF', n:5, m:-1 },
+  { c:'KeyV', n:5, m:-1 },
+  { c:'KeyG', n:6, m:-1 },
+  { c:'KeyB', n:7, m:-1 },
+  { c:'KeyH', n:8, m:-1 },
+  { c:'KeyN', n:9, m:-1 },
+  { c:'KeyJ', n:10, m:-1 },
+  { c:'KeyM', n:11, m:-1 },
+  { c:'KeyK', n:12, m:-1 },
+  { c:'Comma', n:12, m:-1 },
+  { c:'KeyL', n:13, m:-1 },
+  { c:'Period', n:14, m:-1 },
+  { c:'Semicolon', n:15, m:-1 },
+  { c:'Slash', n:16, m:-1 },
+  { c:'Quote', n:17, m:-1 },
+  { c:'IntlRo', n:17, m:-1 },
+  { c:'Backquote', n:10, m:-1 },
+  { c:'Digit1', n:12, m:-1 },
+  { c:'KeyQ', n:12, m:-1 },
+  { c:'Digit2', n:13, m:-1 },
+  { c:'KeyW', n:14, m:-1 },
+  { c:'Digit3', n:15, m:-1 },
+  { c:'KeyE', n:16, m:-1 },
+  { c:'Digit4', n:17, m:-1 },
+  { c:'KeyR', n:17, m:-1 },
+  { c:'Digit5', n:18, m:-1 },
+  { c:'KeyT', n:19, m:-1 },
+  { c:'Digit6', n:20, m:-1 },
+  { c:'KeyY', n:21, m:-1 },
+  { c:'Digit7', n:22, m:-1 },
+  { c:'KeyU', n:23, m:-1 },
+  { c:'KeyI', n:24, m:-1 },
+  { c:'Digit8', n:24, m:-1 },
+  { c:'Digit9', n:25, m:-1 },
+  { c:'KeyO', n:26, m:-1 },
+  { c:'Digit0', n:27, m:-1 },
+  { c:'KeyP', n:28, m:-1 },
+  { c:'Minus', n:29, m:-1 },
+  { c:'BracketLeft', n:29, m:-1 },
+  { c:'Equal', n:30, m:-1 },
+  { c:'IntlYen', n:32, m:-1 },
+  { c:'BracketRight', n:31, m:-1 },
+  { c:'Backslash', n:33, m:-1 },
+  { c:'ArrowDown', n:-128, m:-1 },
+  { c:'ArrowUp', n:128, m:-1 },
+  { c:'ArrowLeft', n:-1, m:-1 },
+  { c:'ArrowRight', n:1, m:-1 },
+  { c:'ShiftLeft', n:-1, m:-1 },
+  { c:'ShiftRight', n:1, m:-1 },
+  // DMTF
+  { c:'Numpad0', n:0, t1:-1, t2:-1 },
+  { c:'Numpad1', n:1, t1:-1, t2:-1 },
+  { c:'Numpad2', n:2, t1:-1, t2:-1 },
+  { c:'Numpad3', n:3, t1:-1, t2:-1 },
+  { c:'Numpad4', n:4, t1:-1, t2:-1 },
+  { c:'Numpad5', n:5, t1:-1, t2:-1 },
+  { c:'Numpad6', n:6, t1:-1, t2:-1 },
+  { c:'Numpad7', n:7, t1:-1, t2:-1 },
+  { c:'Numpad8', n:8, t1:-1, t2:-1 },
+  { c:'Numpad9', n:9, t1:-1, t2:-1 },
+  { c:'NumpadMultiply', n:10, t1:-1, t2:-1 }, //*
+  { c:'NumpadDivide', n:11, t1:-1, t2:-1 },   //#
+  { c:'NumpadSubtract', n:12, t1:-1, t2:-1 }, //A
+  { c:'NumpadAdd', n:13, t1:-1, t2:-1 },      //B
+  { c:'NumpadEnter', n:14, t1:-1, t2:-1 },    //C
+  { c:'NumpadDecimal', n:15, t1:-1, t2:-1 },  //D
+  { c:'PageDown', n:16, t1:-1, t2:-1 },  //north america dialtone
+  { c:'PageUp', n:17, t1:-1, t2:-1 },  //north america ringback
+  { c:'Delete', n:18, t1:-1, t2:-1 },  //north america busy
+];
+
+var rMF = dbRatio(-7);
+var ss5 = [
+  { t1:1300,t2:1500, n:"MF0", r1:rMF, r2:rMF },
+  { t1:700,t2:900, n:"MF1", r1:rMF, r2:rMF },
+  { t1:700,t2:1100, n:"MF2", r1:rMF, r2:rMF },
+  { t1:900,t2:1100, n:"MF3", r1:rMF, r2:rMF },
+  { t1:700,t2:1300, n:"MF4", r1:rMF, r2:rMF },
+  { t1:900,t2:1300, n:"MF5", r1:rMF, r2:rMF },
+  { t1:1100,t2:1300, n:"MF6", r1:rMF, r2:rMF },
+  { t1:700,t2:1500, n:"MF7", r1:rMF, r2:rMF },
+  { t1:900,t2:1500, n:"MF8", r1:rMF, r2:rMF }, 
+  { t1:1100,t2:1500, n:"MF9", r1:rMF, r2:rMF },
+  { t1:700,t2:1700, n:"ST3P", r1:rMF, r2:rMF },
+  { t1:900,t2:1700, n:"STP", r1:rMF, r2:rMF }, 
+  { t1:1100,t2:1700, n:"KP1", r1:rMF, r2:rMF },
+  { t1:1300,t2:1700, n:"KP2", r1:rMF, r2:rMF },
+  { t1:1500,t2:1700, n:"ST", r1:rMF, r2:rMF },
+  { t1:2600,t2:2600, n:"2600", r1:dbRatio(-6), r2:dbRatio(-6) },
+  { t1:2400,t2:2600, n:"2400+2600", r1:dbRatio(-6), r2:dbRatio(-6) },
+  { t1:400,t2:450, n:"UK Ring", r1:dbRatio(-19), r2:dbRatio(-19) },
+  { t1:2400,t2:2400, n:"2400", r1:dbRatio(-6), r2:dbRatio(-6) },
+];
+
+var rLow = dbRatio(-11);
+var rHigh = dbRatio(-9);
+var dtmf = [
+  { t1:941,t2:1336, n:"0", r1:rLow, r2:rHigh },
+  { t1:697,t2:1209, n:"1", r1:rLow, r2:rHigh },
+  { t1:697,t2:1336, n:"2", r1:rLow, r2:rHigh },
+  { t1:697,t2:1477, n:"3", r1:rLow, r2:rHigh },
+  { t1:770,t2:1209, n:"4", r1:rLow, r2:rHigh },
+  { t1:770,t2:1336, n:"5", r1:rLow, r2:rHigh },
+  { t1:770,t2:1477, n:"6", r1:rLow, r2:rHigh },
+  { t1:852,t2:1209, n:"7", r1:rLow, r2:rHigh },
+  { t1:852,t2:1336, n:"8", r1:rLow, r2:rHigh },
+  { t1:852,t2:1477, n:"9", r1:rLow, r2:rHigh },
+  { t1:941,t2:1209, n:"*", r1:rLow, r2:rHigh },
+  { t1:941,t2:1477, n:"#", r1:rLow, r2:rHigh },
+  { t1:697,t2:1633, n:"A", r1:rLow, r2:rHigh },
+  { t1:770,t2:1633, n:"B", r1:rLow, r2:rHigh },
+  { t1:852,t2:1633, n:"C", r1:rLow, r2:rHigh },
+  { t1:941,t2:1633, n:"D", r1:rLow, r2:rHigh },
+  { t1:350,t2:440, n:"NA Dial", r1:dbRatio(-13), r2:dbRatio(-13) },
+  { t1:480,t2:440, n:"NA Ring", r1:dbRatio(-19), r2:dbRatio(-19) },
+  { t1:480,t2:620, n:"NA Busy", r1:dbRatio(-24), r2:dbRatio(-24) },
+];
+
+// return index of event.code in keytable, -1 if not found
+function keyindex(code) {
+  for (var i = 0, j = keytable.length; i < j; i++) {
+    if (keytable[i].c == code)
+      return i;
+  }
+  return -1;
+}
+
+function keydown(event) {
+  if (showconfig) return;
+  event.preventDefault();
+  var i = keyindex(event.code);
+  if (i < 0)
+    return;
+  if (event.code == 'ArrowLeft' || event.code == 'ArrowRight') {
+    updatekeypan(bw * keytable[i].n, 1, 0);
+    return;
+  }
+  if (keyspressed.indexOf(i) < 0) {
+    keyspressed.push(i);
+  } else
+    return; // key was already tracked as pressed
+  var n = keytable[i].n;
+  if (keytable[i].hasOwnProperty('t1')) {
+    if (soundon) {
+      var plan = shiftpressed ? ss5[n] : dtmf[n];
+      startDTMF(keytable[i], plan);
+    }
+    return;
+  }
+  if (event.code == 'ShiftLeft' || event.code == 'ShiftRight') {
+    shiftpressed = true;
+    return;
+  }
+  if (n == -128) {
+    keytranspose -= (shiftpressed ? 1 : 12);
+    if (keytranspose < 0)
+      keytranspose = 0;
+    return;
+  }
+  if (n == 128) {
+    keytranspose += (shiftpressed ? 1 : 12);
+    if (keytranspose > 96)
+      keytranspose = 96;
+    return;
+  }
+  n = keytranspose + n;
+  if (n < 0 || n > 127)
+    return;
+  keytable[i].m = n;  // mark midi note playing for key
+  noteOn(keychan, n, 96);
+}
+
+function keyup(event) {
+  if (event.code == 'Escape') {
+    toggleconfig();
+    return;
+  }
+  if (showconfig) return;
+  event.preventDefault();
+  if (event.code == 'ControlLeft') {
+    cc67(keychan, soft ? 0 : 127);
+    return;
+  }
+  if (event.code == 'AltLeft') {
+    cc66(keychan, sostenuto ? 0 : 127);
+    return;
+  }
+  if (event.code == 'ControlRight') {
+    cc64(keychan, hold1 ? 0 : 127);
+    return;
+  }
+  var i = keyindex(event.code);
+  if (i < 0)
+    return;
+  var j = keyspressed.indexOf(i);
+  if (j < 0)
+    return;  // got key up for key not tracked as pressed
+  keyspressed.splice(j, 1);  // remove key from list of keys pressed
+  if (event.code == 'ShiftLeft' || event.code == 'ShiftRight') {
+    shiftpressed = false;
+    return;
+  }
+  if (keytable[i].hasOwnProperty('t1')) {
+    if (soundon) {
+      // kill active dtmf voices for key
+      stopDTMF(keytable[i]);
+    }
+    return;
+  }
+  var n = keytable[i].m;
+  keytable[i].m = -1; // no midi note playing for key
+  if (n < 0 || n > 127)
+    return;   // octave keys also fall out here
+  noteOff(keychan, n, 64);
+}
+
+function startme(event) {
+  toggleconfig(event);
+  if (showconfig) {
+    // toggle config should have dismissed config
+    // but if it fails due to invalid input, do not continue
+    return false;
+  }
+  // patch up prefixes
+  window.AudioContext=window.AudioContext||window.webkitAudioContext;
+  context = new AudioContext();
+
+  lfo = {
+    osc: context.createOscillator(),
+    env: context.createGain(),
+    freq: noteFreq(0),
+  }
+  lfo.osc.frequency.value = lfo.freq;
+  lfo.osc.type = 'triangle';
+  lfo.env.gain.value = 0;
+  lfo.osc.connect(lfo.env);
+  lfo.osc.start();
+  lfout = context.createAnalyser();
+  lfout.fftSize = 32;
+  lfo.env.connect(lfout);
+  lfdata = new Float32Array(32);
+  channelgain = context.createGain();
+  channelgain.connect(context.destination);
+  channelgain.gain.value = dbRatio(-10);
+  for (i = 0; i < maxVoices; i++) {
+    // set up the basic oscillator chain, muted to begin with.
+    var oscillator = context.createOscillator();
+    var envelope = context.createGain();
+    oscillator.frequency.value = 0;
+    oscillator.connect(envelope);
+    lfo.env.connect(oscillator.detune);
+    envelope.connect(channelgain);
+    envelope.gain.value = 0.0;  // Mute the sound
+    oscillator.start();  // start the note
+    voice.push({
+      start: -1,
+      note: -1,
+      freq: 0,
+      hold1: false,
+      sostenuto: false,
+      osc: oscillator,
+      env: envelope,
+    });
+  }
+  resize();
+  if (navigator.requestMIDIAccess)
+    navigator.requestMIDIAccess().then(onMIDIInit, onMIDIReject);
+  else
+    midienabled = false;
+  requestAnimationFrame(animate);
+  // unregister handler that called this function
+  // point it somewhere else...
+  canvas.onclick = null;
+  cfgform.removeEventListener('submit', startme, false);
+  cfgform.addEventListener('submit', toggleconfig, false);
+  // register some event handlers
+  var opt = {passive:false};
+  window.addEventListener('resize', resize, opt);
+  window.addEventListener('keydown', keydown, opt);
+  window.addEventListener('keyup', keyup, opt);
+  window.addEventListener('mousedown', mousedown, opt);
+  window.addEventListener('mouseup', mouseup, opt);
+  window.addEventListener('mousemove', mousemove, opt);
+  window.addEventListener('wheel', mousewheel, opt);
+  window.addEventListener('touchstart', handletouch, opt);
+  window.addEventListener('touchend', handletouch, opt);
+  window.addEventListener('touchmove', handletouch, opt);
+  window.addEventListener('touchcancel', handletouch, opt);
+  return false; // prevent form submit
+}
+function hookUpMIDIInput() {
+  var haveAtLeastOneDevice=false;
+  var inputs=midiAccess.inputs.values();
+  mididev = '';
+  midiAccess.inputs.forEach(function(input) { mididev += '    ' + input.name;});
+  if (mididev.length < 4)
+    mididev = "...connect a midi device to visualize...";
+  for (var input = inputs.next(); input && !input.done; input = inputs.next()) {
+          input.value.onmidimessage = MIDIMessageEventHandler;
+          haveAtLeastOneDevice = true;
+  }
+}
+function onMIDIInit(midi) {
+  midiAccess = midi;
+  hookUpMIDIInput();
+  midiAccess.onstatechange=hookUpMIDIInput;
+  midienabled = true;
+}
+function onMIDIReject(err) {
+  midienabled = false;
+}
+var f8ts = 0;
+var f8ct = 0;
+var tempo = 0;
+function MIDIMessageEventHandler(event) {
+  if (mididbg.length > 15)
+    mididbg = '';
+  mididbg = [...mididbg, ...event.data];
+  // Mask off the lower nibble (MIDI channel, which we don't care about)
+  var channel = event.data[0] & 0x0f;
+  switch (event.data[0] & 0xf0) {
+    case 0xf0: // special cases
+      if (event.data[0] == 0xf8) {  // midi beat clock
+        var now = performance.now();
+        var dt = now - f8ts;
+        f8ct += 1;
+        if (dt > 1000) {  // update tempo after >= 1s of beat clocks
+          if (dt > 0 && dt < 250 * f8ct) // must be 10 to 1440000 bpm
+            tempo = (2500 * f8ct / dt).toFixed(1);
+          f8ct = 0;
+          f8ts = now
+        }
+      }
+      break;
+    case 0xb0: // midi cc
+      if (event.data[1] == 1) { // modulation wheel
+        cc01(channel, event.data[2]);
+      }
+      if (event.data[1] == 64) { // hold1 (damper)
+        cc64(channel, event.data[2]);
+      }
+      if (event.data[1] == 66) { // sostenuto
+        cc66(channel, event.data[2]);
+      }
+      if (event.data[1] == 67) { // soft
+        cc67(channel, event.data[2]);
+      }
+      break;
+    case 0xe0: // pitch wheel
+      pitchBend(event.data[1] | (event.data[2] << 7));
+      break;
+    case 0x90:  // note on
+      if (event.data[2]!=0) {  // if velocity != 0, this is a note-on message
+        noteOn(channel, event.data[1], event.data[2]);
+        break;
+      }
+      // if velocity == 0, fall through to note off case
+    case 0x80:  // note off
+      noteOff(channel, event.data[1]);
+      break;
+  }
+}
+function cc01(channel, value) {
+  var modwheel = value / 127;
+  // do this whether or not sound is on for modulation rendering
+  lfo.env.gain.value = moddepth * modwheel;
+}
+function cc64(channel, value) {
+  hold1 = (value >= 64);
+  if (!hold1) {
+    for (var i = 0; i < kct; i++)
+      keyboxes[i].held = false;
+    if (soundon) {
+      // kill all the playing notes that got noteoff already
+      stopSustain();
+    }
+  }
+}
+function cc66(channel, value) {
+  sostenuto = (value >= 64);
+  if (sostenuto) {
+    // record notes currently on
+    sostenutolist = [];
+    for (var i = 0; i < kct; i++) {
+      if (keyboxes[i].pressed)
+        sostenutolist.push(i);
+    }
+
+  } else {
+    if (soundon)
+      stopSustain();
+  }
+}
+function cc67(channel, value) {
+  soft = (value >= 64);
+}
+function noteOn(channel, noteNumber, velocity) {
+  if (soft)
+    velocity /= 3.0;
+  noteboxes.push({
+    y: canvas.height - kh,
+    h: 1,
+    n: noteNumber,
+    v: velocity,
+    playing: true,
+    pfill:ccolor[channel],
+  });
+  if (noteNumber < kct) {
+    keyboxes[noteNumber].v = velocity;
+    keyboxes[noteNumber].ptime = context.currentTime;
+    keyboxes[noteNumber].pressed = true;
+    keyboxes[noteNumber].pfill = ccolor[channel] + '33';
+    keyboxes[noteNumber].sfill = ccolor[channel] + 'ff';
+  }
+  if (soundon) {
+    startNote(channel, noteNumber, velocity);
+  }
+  notecount += 1;
+}
+function noteOff(channel, noteNumber) {
+  for (var i = 0, j = noteboxes.length; i < j; i++) {
+    if (noteboxes[i].n == noteNumber)
+      noteboxes[i].playing = false;
+  }
+  if (noteNumber < kct) {
+    keyboxes[noteNumber].pressed = false;
+    keyboxes[noteNumber].held = hold1;
+  }
+  if (soundon) {
+    stopNote(channel, noteNumber);
+  }
+}
+
+// add a round rectangle function
+ctx.roundRect = function(x,y,w,h,r) {
+  if (r > h / 2)
+    r = h / 2;
+  if (r > w / 2)
+    r = w / 2;
+  var r2 = r;
+  if ((1+innerHeight-kh)-(y+h) < r) {
+    r2 = (1+innerHeight-kh)-(y+h);
+    if (r2 < 1)
+      r2 = 0;
+  }
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);  // top
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r2); // right
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r2, y + h);
+  ctx.lineTo(x + r2, y + h);  // bottom
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r2);
+  ctx.lineTo(x, y + r); // left
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+}
+
+var start = 0;
+var last = 0;
+var frame = 0;
+var framerate = 1000.0 / 60.0;  // expected update 60fps
+
+var npos = 0;
+
+function updatefire() {
+  var w = fireimg1.width;
+  var h = fireimg1.height;
+
+  noteseed();
+  for (var y = h - 2; y > 2; y--) {
+    for (var x = 1; x < w - 1; x++) {
+      var offset = x * 4 + y * w * 4;
+      var o1 = offset + 4;
+      var o2 = offset - 4;
+      var o3 = offset + w * 4;
+      var o4 = offset - 2 * w * 4;
+
+      var c = noiseimg.data[x * 4 + ((npos + y) % h) * w * 4];
+      var p = (fireimg1.data[o1] + fireimg1.data[o2] +
+        fireimg1.data[o3] + fireimg1.data[o4]) / 4;
+      p -= c;
+
+      if (p < 0)
+        p = 0
+      // write pixel value to buffer2 one pixel higher
+      fireimg2.data[o4] = Math.round(p);
+      fireimg2.data[o4+1] = p < 174 ? 0 : p * 174 / 255;
+      fireimg2.data[o4+2] = p < 20 ? 0 : p * 20 / 255;
+      fireimg2.data[o4+3] = p < 20 ? 0 : 255;
+    }
+  }
+  npos += 1;
+  npos %= h;
+  fireimg1.data.set(fireimg2.data);
+  ctx.putImageData(fireimg1, 0, 0);
+}
+
+function makenoiseimage() {
+  var w = noiseimg.width;
+  var h = noiseimg.height;
+
+  for (var y = 0; y < h; y++) {
+    for (var x = 0; x < w; x++) {
+      var offset = x * 4 + y * w * 4;
+      var v = Math.random() * 12;
+      noiseimg.data[offset] = v;
+    }
+  }
+}
+function noteseed() {
+  var w = fireimg1.width;
+  var h = fireimg1.height;
+  var seed = ctx.getImageData(0, 0,
+    innerWidth, innerHeight - kh - 2);
+  var offset = (h - h) * w * 4;
+  for (var i = 0, j = seed.data.length; i < j; i += 4) {
+    if (seed.data[i] > 0 || seed.data[i + 1] > 0 ||
+      seed.data[i + 2] > 0) {
+      fireimg1.data[offset + i] = 255;
+      fireimg1.data[offset + i + 3] = 255;
+    }
+  }
+}
+function Dot(x, y, dx, dy, c) {
+  this.x = x;
+  this.y = y;
+  this.dx = dx;
+  this.dy = dy;
+  this.c = c;
+  this.update = function() {
+    this.x += this.dx;
+    this.y += this.dy;
+    this.dy += gravity;
+    if (this.x > innerWidth) {
+      this.x = innerWidth - 1;
+      this.dx = -this.dx;
+    }
+    if (this.x < 0) {
+      this.x = 0;
+      this.dx = -this.dx;
+    }
+    if (this.y > innerHeight - kh) {
+      this.y = innerHeight - kh;
+      this.dy = 0;
+    }
+    if (this.y < 0) {
+      this.dy = -this.dy;
+      this.y = 0;
+    }
+    ctx.fillStyle = this.c;
+    ctx.fillRect(this.x, this.y, 2, 2);
+  }
+}
+function drawspark(thiskey) {
+  var dt = context.currentTime - thiskey.ptime;
+  if (dt > 6)
+    return;
+  var size = thiskey.w * (9 - dt) / 9;
+  var x = keypan + thiskey.x + thiskey.w / 2;
+  var y = thiskey.y+1;
+  var rot = Math.PI/2;
+  var points = Math.floor(Math.random() * 5) + 20;
+  var dangle = Math.PI / points;
+  var vmod = Math.sqrt(thiskey.v) / 10;
+  ctx.beginPath();
+  ctx.moveTo(x + size, y);
+  for (var i = 0; i <= points; i++) {
+    var wiggle = i > 0 && i < points ?
+      Math.random() * dangle / 2 - dangle / 4 : 0;
+    var dx = Math.sin(i * dangle + wiggle + rot);
+    var dy = Math.cos(i * dangle + wiggle + rot);
+    var r = Math.random() * size/2 + size;
+    var v = Math.random() * 6 + 6;
+    v *= (9 - dt)/9;
+    if (showflames) {
+      r *= 0.4;
+    }
+    if (i & 1) {
+      r *= 0.55;
+    } else if (i > points / 2 - 5 && i < points / 2 + 5) {
+      // for the five "middle" spark points, shoot particles
+      var newx = x + r * dx;
+      var newy = y + r * dy;
+      v *= vmod;
+      var c = v > 11.5 ? '#fff' : thiskey.sfill;
+      particles.push(new Dot(newx, newy, v * dx, v * dy, c));
+    }
+    ctx.lineTo(x + r * dx, y + r * dy);
+  }
+  ctx.moveTo(x - size, y);
+  ctx.closePath();
+  ctx.strokeStyle = thiskey.sfill;
+  ctx.fillStyle = '#fff';
+  ctx.fill();
+  ctx.stroke();
+}
+function animate(timestamp) {
+  var dt = timestamp - last;
+  if (start <= 0) {
+    start = timestamp;
+    if (canvas.height != innerHeight || canvas.width != innerWidth)
+      resize();  // work around weird bug style recalculation on startup
+  }
+  requestAnimationFrame(animate);
+  var modoff = lfdata[0] / 100;
+  var pos = (timestamp - start);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // update particles
+  for (var i = 0, j = particles.length; i < j; i++) {
+    particles[i].update();
+  }
+  // delete particles that fall off screen
+  for (var i = particles.length - 1; i >= 0; i--) {
+    if (particles[i].y >= innerHeight - kh) {
+      particles.splice(i, 1);
+    }
+  }
+
+  // draw white keys first
+  ctx.strokeStyle = '#000';
+  for (var i = 0, j = keyboxes.length; i < j; i++) {
+    if (keyboxes[i].isBlack)
+      continue;
+    if (whiteimg != null) {
+      koff = keyboxes[i].pressed ? 6 : 0;
+      ctx.drawImage(whiteimg, 0, 0,
+        whiteimg.naturalWidth, whiteimg.naturalHeight - koff,
+        keypan + keyboxes[i].x, keyboxes[i].y,
+        keyboxes[i].w, keyboxes[i].h);
+    } else {
+      ctx.fillStyle = keyboxes[i].fill;
+      ctx.beginPath();
+      ctx.rect(keypan + keyboxes[i].x, keyboxes[i].y,
+        keyboxes[i].w, keyboxes[i].h);
+      ctx.fill();
+      ctx.stroke();
+    }
+    if (!keyboxes[i].pnote) {
+      ctx.fillStyle = 'rgba(0,0,0,0.1)';
+      ctx.fillRect(keypan + keyboxes[i].x, keyboxes[i].y,
+        keyboxes[i].w, keyboxes[i].h);
+    }
+    if (keyboxes[i].pressed) {
+      ctx.fillStyle = keyboxes[i].pfill;
+      ctx.fillRect(keypan + keyboxes[i].x, keyboxes[i].y,
+        keyboxes[i].w, keyboxes[i].h);
+    }
+    if (bw > 5 && (i % 12) == 0) {
+      // place note name centered on the bottom of every c
+      var off = keyboxes[i].pressed ? 6 : 0;
+      var oct = i / 12 - 1;
+      var txt = 'C' + oct;
+      ctx.save()
+      ctx.fillStyle = 'rgba(0,0,0,0.1)';
+      ctx.font = '10px sans-serif';
+      var tw = ctx.measureText('C-1');  // scale size for largest
+      var scale = keyboxes[i].w / tw.width;
+      var px = Math.floor(10 * scale);
+      ctx.font = px + 'px sans-serif';
+      tw = ctx.measureText(txt);
+      ctx.fillText(txt, keypan + keyboxes[i].x +
+        keyboxes[i].w/2 - tw.width/2, keyboxes[i].y + 0.9 * kh + off);
+      ctx.fill();
+      ctx.restore()
+    }
+  }
+  // draw black keys on top
+  for (var i = 0, j = keyboxes.length; i < j; i++) {
+    if (showoctaves && i % 12 == 0) {  // draw thin octave lines
+      ctx.strokeStyle = '#000';
+      ctx.beginPath();
+      ctx.moveTo(keypan + keyboxes[i].x, keyboxes[i].y);
+      ctx.lineTo(keypan + keyboxes[i].x, 0);
+      ctx.stroke();
+    }
+    if (!keyboxes[i].isBlack)
+      continue;
+    if (blackimg != null) {
+      koff = keyboxes[i].pressed ? 6 : 0;
+      ctx.drawImage(blackimg, 0, 0,
+        blackimg.naturalWidth, blackimg.naturalHeight - koff,
+        keypan + keyboxes[i].x, keyboxes[i].y,
+        keyboxes[i].w, keyboxes[i].h);
+    } else {
+      ctx.fillStyle = keyboxes[i].fill;
+      ctx.fillRect(keypan + keyboxes[i].x, keyboxes[i].y,
+        keyboxes[i].w, keyboxes[i].h);
+    }
+    if (!keyboxes[i].pnote) {
+      ctx.fillStyle = 'rgba(0,0,0,0.1)';
+      ctx.fillRect(keypan + keyboxes[i].x, keyboxes[i].y,
+        keyboxes[i].w, keyboxes[i].h);
+    }
+    if (keyboxes[i].pressed) {
+      ctx.fillStyle = keyboxes[i].pfill;
+      ctx.fillRect(keypan + keyboxes[i].x, keyboxes[i].y,
+        keyboxes[i].w, keyboxes[i].h);
+    }
+  }
+
+  for (var i = 0, j = noteboxes.length; i < j; i++) {
+    var thisnote = noteboxes[i];
+    var y = thisnote.y;
+    var h = thisnote.h;
+    var n = thisnote.n;
+    var v = thisnote.v;
+    var x = keyboxes[n].x + keypan + bw * modoff + bw * notefrac;
+
+    if (i == 0) {
+      // webkit is missing getFloatTimeDomainData, just use 0 if missing
+      if (lfout.getFloatTimeDomainData != undefined)
+        lfout.getFloatTimeDomainData(lfdata);
+      else
+        lfdata[0] = 0;
+    }
+    thisnote.y -= dy * dt / framerate;
+    if (thisnote.playing == true) {
+      thisnote.h += dy * dt / framerate;
+      if (thisnote.h > innerHeight - kh) {
+        // clip tall notes to viewing area
+        thisnote.h = innerHeight - kh;
+        thisnote.y = 0;
+      }
+    }
+    ctx.fillStyle = thisnote.pfill + (88 + v).toString(16);
+    ctx.strokeStyle = thisnote.pfill + 'ff';
+    ctx.roundRect(x, y, keyboxes[n].w, h, bw);
+    ctx.fill();
+    ctx.stroke();
+  }
+  // delete noteboxes that scroll off screen
+  for (var i = noteboxes.length - 1; i >= 0; i--) {
+    if (noteboxes[i].y + noteboxes[i].h < 0) {
+      noteboxes.splice(i, 1);
+    }
+  }
+  // draw red line at the top of keys
+  ctx.fillStyle = '#f00';
+  ctx.fillRect(0, canvas.height - kh - 2*keyscale,
+    canvas.width, 1+2*keyscale);
+
+  // draw sparks for all notes pressed or held
+  for (var i = 0; i < kct; i++) {
+    if ((keyboxes[i].x + keyboxes[i].w + keypan < 0) ||
+      (keyboxes[i].x + keypan > innerWidth)) {
+      continue;  // skip keys outside view
+    }
+    if (keyboxes[i].pressed || keyboxes[i].held) {
+      drawspark(keyboxes[i]);
+    }
+  }
+  // draw fire on top of it all...
+  if (showflames) {
+    updatefire();
+  }
+
+  if (showdebug) {
+    //ctx.clearRect(0, 0, canvas.width, 60);
+    ctx.fillStyle = '#ffd';
+    ctx.fillText('MIDI Device:' + mididev, 30 , 40);
+    var hexmidi = '';
+    mididbg.forEach(function(val) {
+      hexmidi += ' ' + (val + 256).toString(16).substr(-2);
+    });
+    ctx.fillText('MIDI Debug: ' + hexmidi, 30 , 30);
+  }
+  ctx.fillStyle = '#fff';
+  ctx.fillText(notecount, 30, 60);
+  if (tempo > 0) {
+    ctx.fillText('Tempo = ' + tempo + ' bpm', 30, 10);
+  }
+  last = timestamp;
+  frame += 1;
+};
+
+//]]>
+</script>
+</body>
+</html>
