@@ -75,6 +75,8 @@ while playing...</p>
 checked> Generate Sounds</input></label></div>
 <div><label><input name="showflames" type="checkbox" value="showflames">
 Generate Flames</input></label></div>
+<div><label><input name="showfountain" type="checkbox"
+value="showfountain"> Bellagio Fountain</input></label></div>
 <div><label><input name="showdebug" type="checkbox" value="showdebug">
 Show MIDI Events</input></label></div>
 <div><label><input name="showoctaves" type="checkbox" value="showoctaves"
@@ -162,6 +164,7 @@ var sostenutolist = []; // notes on at the time sostenuto pressed
 var soft = false;       // cc67
 var showoctaves = false;
 var showflames = false;
+var showfountain = false;
 var showdebug = false;
 var showconfig = true;
 
@@ -432,6 +435,7 @@ function toggleconfig(event) {
     for (var i = 0; i < 15; i++) {
       ccolor[i] = cfgform["c"+(i+1)].value;
     }
+    showfountain = cfgform["showfountain"].checked;
     showflames = cfgform["showflames"].checked;
     if (showflames)
       resize();
@@ -1423,21 +1427,9 @@ function Dot(x, y, dx, dy, c) {
     this.x += this.dx;
     this.y += this.dy;
     this.dy += gravity;
-    if (this.x > innerWidth) {
-      this.x = innerWidth - 1;
-      this.dx = -this.dx;
-    }
-    if (this.x < 0) {
-      this.x = 0;
-      this.dx = -this.dx;
-    }
     if (this.y > innerHeight - kh) {
       this.y = innerHeight - kh;
       this.dy = 0;
-    }
-    if (this.y < 0) {
-      this.dy = -this.dy;
-      this.y = 0;
     }
     ctx.fillStyle = this.c;
     ctx.fillRect(this.x, this.y, 2, 2);
@@ -1454,6 +1446,7 @@ function drawspark(thiskey) {
   var points = Math.floor(Math.random() * 5) + 20;
   var dangle = Math.PI / points;
   var vmod = Math.sqrt(thiskey.v) / 10;
+  var fangle = Math.sin(context.currentTime*4) * Math.PI/8;
   ctx.beginPath();
   ctx.moveTo(x + size, y);
   for (var i = 0; i <= points; i++) {
@@ -1475,7 +1468,14 @@ function drawspark(thiskey) {
       var newy = y + r * dy;
       v *= vmod;
       var c = v > 11.5 ? '#fff' : thiskey.sfill;
-      particles.push(new Dot(newx, newy, v * dx, v * dy, c));
+      if (!showfountain) {
+        particles.push(new Dot(newx, newy, v * dx, v * dy, c));
+      } else {
+        dx = Math.sin(2*rot+fangle+wiggle);
+        dy = Math.cos(2*rot+fangle+wiggle);
+        v += 10;
+        particles.push(new Dot(x, y, v * dx, v * dy, c));
+      }
     }
     ctx.lineTo(x + r * dx, y + r * dy);
   }
@@ -1635,6 +1635,7 @@ function animate(timestamp) {
       noteboxes.splice(i, 1);
     }
   }
+  ctx.beginPath();  // seems required to stop artifact
   // draw red line at the top of keys
   ctx.fillStyle = '#f00';
   ctx.fillRect(0, canvas.height - kh - 2*keyscale,
