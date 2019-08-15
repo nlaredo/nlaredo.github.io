@@ -81,6 +81,8 @@ value="showfountain"> Bellagio Fountain</input></label></div>
 Show MIDI Events</input></label></div>
 <div><label><input name="showoctaves" type="checkbox" value="showoctaves"
 defaultChecked="false"> Show Octave Lines</input></label></div>
+<div><label><input name="mastertune" type="number" value="440"
+min="415.3" max="466.2" step="any"> Master Tuning</input></label></div>
 <div><label><input name="benddn" type="number"
 value="-12" min="-24" max="-1"> - Pitch Bend</input></label></div>
 <div><label><input name="bendup" type="number"
@@ -427,6 +429,7 @@ function toggleconfig(event) {
     setSound(cfgform["soundon"].checked);
     showdebug = cfgform["showdebug"].checked;
     showoctaves = cfgform["showoctaves"].checked;
+    mastertune = cfgform["mastertune"].value;
     benddn = -cfgform["benddn"].value;
     bendup = cfgform["bendup"].value;
     touchchan = cfgform["touchchan"].value - 1;
@@ -720,7 +723,7 @@ function mousemove(event) {
 
 function mouseup(event) {
   event.preventDefault();
-  if (event.clientY < 75) {  // sound on/off if clicked in debug area
+  if (event.clientY < 75 || event.type == 'contextmenu') {
     toggleconfig(event);
   }
   if (mousenote >= 0) {
@@ -1162,6 +1165,7 @@ function startme(event) {
   window.addEventListener('keydown', keydown, opt);
   window.addEventListener('keyup', keyup, opt);
   window.addEventListener('mousedown', mousedown, opt);
+  window.addEventListener('contextmenu', mouseup, opt);
   window.addEventListener('mouseup', mouseup, opt);
   window.addEventListener('mousemove', mousemove, opt);
   window.addEventListener('wheel', mousewheel, opt);
@@ -1464,18 +1468,16 @@ function drawspark(thiskey) {
       r *= 0.55;
     } else if (i > points / 2 - 5 && i < points / 2 + 5) {
       // for the five "middle" spark points, shoot particles
-      var newx = x + r * dx;
-      var newy = y + r * dy;
       v *= vmod;
       var c = v > 11.5 ? '#fff' : thiskey.sfill;
-      if (!showfountain) {
-        particles.push(new Dot(newx, newy, v * dx, v * dy, c));
-      } else {
+      if (showfountain) {
         dx = Math.sin(2*rot+fangle+wiggle);
         dy = Math.cos(2*rot+fangle+wiggle);
         v += 10;
-        particles.push(new Dot(x, y, v * dx, v * dy, c));
       }
+      var newx = x + r * dx;
+      var newy = y + r * dy;
+      particles.push(new Dot(newx, newy, v * dx, v * dy, c));
     }
     ctx.lineTo(x + r * dx, y + r * dy);
   }
