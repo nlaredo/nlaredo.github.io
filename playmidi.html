@@ -59,7 +59,7 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <a
 href="https://www.gnu.org/licenses/">https://www.gnu.org/licenses/</a>.
 </pre>
-<canvas id="keyboard" onclick="startme(event)"></canvas>
+<canvas id="keyboard""></canvas>
 <div id="config">
 <h1>PlayMIDI Settings</h1>
 <h4>v20190814 -- Follow development at:
@@ -147,7 +147,6 @@ var context=null;	// the Web Audio "context" object
 var midiAccess=null;	// the MIDIAccess object.
 var voice = [];         // tracking of synth voices
 var lfo;                // for tracking synth LFO
-var changain;           // channel gain node
 var lfout;              // for drawing LFO data
 var lfdata = new Float32Array(32);
 var moddepth = 50;      // mod depth range in cents (midi default 50 cents)
@@ -157,9 +156,8 @@ var sustain=0.75;       // sustain level
 var release=0.15;	// release speed
 var mastertune=440;
 var maxVoices=16;
-var soundon = true;
+var soundon = false;
 var midienabled = false;
-var audioenabled = false;
 var hold1 = false;      // cc64
 var sostenuto = false;  // cc66
 var sostenutolist = []; // notes on at the time sostenuto pressed
@@ -202,7 +200,7 @@ var midi_status = {
   PITCH_BEND:0xe0,
   SYSTEM_PREFIX:0xf0,
 };
-var midi_sys_msg = {
+var midi_sys = {
   SYSTEM_EXCLUSIVE:0xf0,
   TIME_CODE_QF:0xf1,
   SONG_POSITION:0xf2,
@@ -337,7 +335,7 @@ var midi_nrpn = {
 if (Object.freeze) {
   Object.freeze(smf_meta_events);
   Object.freeze(midi_status);
-  Object.freeze(midi_sys_msg);
+  Object.freeze(midi_sys);
   Object.freeze(midi_ctl);
   Object.freeze(midi_rpn);
   Object.freeze(midi_nrpn);
@@ -413,16 +411,54 @@ whitekey.onload = function () { whiteimg = whitekey; };
 whitekey.src = "images/whitekey.png";
 
 resize();
-window.addEventListener('resize', resize, false);
-cfgform.addEventListener('submit', startme, false);
-// start animation below menu
+initaudio();
+function enableevents() {
+  // register some event handlers
+  window.addEventListener('resize', resize, false);
+  cfgform.addEventListener('submit', toggleconfig, false);
+  var opt = {passive:false};
+  window.addEventListener('keydown', keydown, opt);
+  window.addEventListener('keyup', keyup, opt);
+  window.addEventListener('contextmenu', mouseup, opt);
+  canvas.addEventListener('mouseup', mouseup, opt);
+  canvas.addEventListener('mousedown', mousedown, opt);
+  canvas.addEventListener('mousemove', mousemove, opt);
+  canvas.addEventListener('wheel', mousewheel, opt);
+  canvas.addEventListener('touchstart', handletouch, opt);
+  canvas.addEventListener('touchend', handletouch, opt);
+  canvas.addEventListener('touchmove', handletouch, opt);
+  canvas.addEventListener('touchcancel', handletouch, opt);
+  // enable midi events
+  if (navigator.requestMIDIAccess)
+    navigator.requestMIDIAccess().then(gotMIDI, deniedMIDI);
+  else
+    midienabled = false;
+}
+// start animation behind menu
 requestAnimationFrame(animate);
+enableevents();
+function failaudio() { soundon = false; }
+function startaudio() {
+  setSound(cfgform["soundon"].checked);
+  if (lfo.start < 0) {
+    lfo.osc.start();
+    lfo.start = 0;
+  }
+}
 function toggleconfig(event) {
   // prevent form submit
   if (event) event.preventDefault();
   if (showconfig && !cfgform.checkValidity()) {
     cfgform.reportValidity();
     return false;  // prevent dismiss/submit
+  }
+  if (context.state == 'suspended') {
+    // test "proper" interaction to enable audio before dismiss
+    if (event.type != 'keyup') {
+      context.resume().then(startaudio,failaudio);
+    } else {
+      return false; // prevent dismiss/submit
+    }
   }
   if (showconfig) {
     // validated form user is asking to dismiss
@@ -457,6 +493,8 @@ function setSound(value) {
   if (soundon == value)
     return;
   soundon = value;
+  if (soundon)
+    return;
   for (var i = 0; i < maxVoices; i++) {
     if (voice[i].note >= 0) {
       voice[i].env.gain.cancelScheduledValues(0);
@@ -537,7 +575,7 @@ function startDTMF(keyentry, plan) {
   voice[v].freq = plan.t1;
   voice[v].osc.type = 'sine';
   voice[v].osc.frequency.setValueAtTime(voice[v].freq, 0);
-  voice[v].start = performance.now();
+  voice[v].start = context.currentTime;
   voice[v].env.gain.cancelScheduledValues(0);
   voice[v].env.gain.setTargetAtTime(v1, 0, 0.005);
   keyentry.t1 = v;
@@ -546,7 +584,7 @@ function startDTMF(keyentry, plan) {
   voice[v].freq = plan.t2;
   voice[v].osc.type = 'sine';
   voice[v].osc.frequency.setValueAtTime(voice[v].freq, 0);
-  voice[v].start = performance.now();
+  voice[v].start = context.currentTime;
   voice[v].env.gain.cancelScheduledValues(0);
   voice[v].env.gain.setTargetAtTime(v2, 0, 0.005);
   keyentry.t2 = v;
@@ -559,7 +597,9 @@ function startNote(channel, note, velocity) {
   voice[i].sostenuto = false;
   voice[i].osc.frequency.setValueAtTime(voice[i].freq * bendmult, 0);
   voice[i].osc.type = 'square';
-  voice[i].start = performance.now();
+  if (voice[i].start < 0)
+    voice[i].osc.start();
+  voice[i].start = context.currentTime;
   voice[i].env.gain.cancelScheduledValues(0);
   voice[i].env.gain.setTargetAtTime((velocity/127), 0, attack);
   voice[i].env.gain.setTargetAtTime((sustain * velocity/127),
@@ -702,7 +742,6 @@ function getkey(x,y) {
 }
 
 function mousemove(event) {
-  if (showconfig) return;
   event.preventDefault();
   if (mousenote < 0) {
     return;
@@ -732,7 +771,6 @@ function mouseup(event) {
   }
 }
 function mousedown(event) {
-  if (showconfig) return;
   event.preventDefault();
   var note;
   if (mousenote >= 0) {
@@ -773,7 +811,6 @@ function updatekeypan(oldx, scale, x)
     keypan = 0;
 }
 function mousewheel(event) {
-  if (showconfig) return;
   event.preventDefault();
   var delta = event.deltaY;
   if (event.shiftKey) { // wheel + shift = pan left/right (deltaY)
@@ -799,15 +836,12 @@ var olddist = -1;
 var oldxc = -1;
 
 function handletouch(event) {
-  if (showconfig) {
-    return;  // dismiss will be handled by default mouse emulation
-  }
   event.preventDefault();
   var notes = [];
   var count = event.touches.length;
   if (count == 1) {
     if (oldxc < 0 && event.touches[0].clientY < 75) {
-      toggleconfig();
+      toggleconfig(event);
       return;
     }
     if (event.touches[0].clientY < innerHeight - kh - 2) {
@@ -1015,8 +1049,8 @@ function keyindex(code) {
 }
 
 function keydown(event) {
-  if (showconfig) return;
   event.preventDefault();
+  if (showconfig) return;
   var i = keyindex(event.code);
   if (i < 0)
     return;
@@ -1061,12 +1095,12 @@ function keydown(event) {
 }
 
 function keyup(event) {
+  event.preventDefault();
   if (event.code == 'Escape') {
-    toggleconfig();
+    toggleconfig(event);
     return;
   }
   if (showconfig) return;
-  event.preventDefault();
   if (event.code == 'ControlLeft') {
     cc67(keychan, soft ? 0 : 127);
     return;
@@ -1104,13 +1138,7 @@ function keyup(event) {
   noteOff(keychan, n, 64);
 }
 
-function startme(event) {
-  toggleconfig(event);
-  if (showconfig) {
-    // toggle config should have dismissed config
-    // but if it fails due to invalid input, do not continue
-    return false;
-  }
+function initaudio(event) {
   // patch up prefixes
   window.AudioContext=window.AudioContext||window.webkitAudioContext;
   context = new AudioContext();
@@ -1119,12 +1147,12 @@ function startme(event) {
     osc: context.createOscillator(),
     env: context.createGain(),
     freq: noteFreq(0),
+    start: -1,
   }
   lfo.osc.frequency.value = lfo.freq;
   lfo.osc.type = 'triangle';
   lfo.env.gain.value = 0;
   lfo.osc.connect(lfo.env);
-  lfo.osc.start();
   lfout = context.createAnalyser();
   lfout.fftSize = 32;
   lfo.env.connect(lfout);
@@ -1140,7 +1168,6 @@ function startme(event) {
     lfo.env.connect(oscillator.detune);
     envelope.connect(channelgain);
     envelope.gain.value = 0.0;  // Mute the sound
-    oscillator.start();  // start the note
     voice.push({
       start: -1,
       note: -1,
@@ -1151,31 +1178,8 @@ function startme(event) {
       env: envelope,
     });
   }
-  if (navigator.requestMIDIAccess)
-    navigator.requestMIDIAccess().then(onMIDIInit, onMIDIReject);
-  else
-    midienabled = false;
-  // unregister handler that called this function
-  // point it somewhere else...
-  canvas.onclick = null;
-  cfgform.removeEventListener('submit', startme, false);
-  cfgform.addEventListener('submit', toggleconfig, false);
-  // register some event handlers
-  var opt = {passive:false};
-  window.addEventListener('keydown', keydown, opt);
-  window.addEventListener('keyup', keyup, opt);
-  window.addEventListener('mousedown', mousedown, opt);
-  window.addEventListener('contextmenu', mouseup, opt);
-  window.addEventListener('mouseup', mouseup, opt);
-  window.addEventListener('mousemove', mousemove, opt);
-  window.addEventListener('wheel', mousewheel, opt);
-  window.addEventListener('touchstart', handletouch, opt);
-  window.addEventListener('touchend', handletouch, opt);
-  window.addEventListener('touchmove', handletouch, opt);
-  window.addEventListener('touchcancel', handletouch, opt);
-  return false; // prevent form submit
 }
-function hookUpMIDIInput() {
+function connectMIDI() {
   var haveAtLeastOneDevice=false;
   var inputs=midiAccess.inputs.values();
   mididev = '';
@@ -1183,23 +1187,23 @@ function hookUpMIDIInput() {
   if (mididev.length < 4)
     mididev = "...connect a midi device to visualize...";
   for (var input = inputs.next(); input && !input.done; input = inputs.next()) {
-          input.value.onmidimessage = MIDIMessageEventHandler;
+          input.value.onmidimessage = midimessage;
           haveAtLeastOneDevice = true;
   }
 }
-function onMIDIInit(midi) {
+function gotMIDI(midi) {
   midiAccess = midi;
-  hookUpMIDIInput();
-  midiAccess.onstatechange=hookUpMIDIInput;
+  connectMIDI();
+  midiAccess.onstatechange=connectMIDI;
   midienabled = true;
 }
-function onMIDIReject(err) {
+function deniedMIDI(err) {
   midienabled = false;
 }
 var f8ts = 0;
 var f8ct = 0;
 var tempo = 0;
-function MIDIMessageEventHandler(event) {
+function midimessage(event) {
   if (mididbg.length > 15)
     mididbg = '';
   mididbg = [...mididbg, ...event.data];
@@ -1207,7 +1211,7 @@ function MIDIMessageEventHandler(event) {
   var channel = event.data[0] & 0x0f;
   switch (event.data[0] & 0xf0) {
     case midi_status.SYSTEM_PREFIX:
-      if (event.data[0] == midi_status.TIMING_CLOCK) {
+      if (event.data[0] == midi_sys.TIMING_CLOCK) {
         var now = performance.now();
         var dt = now - f8ts;
         f8ct += 1;
@@ -1439,8 +1443,8 @@ function Dot(x, y, dx, dy, c) {
     ctx.fillRect(this.x, this.y, 2, 2);
   }
 }
-function drawspark(thiskey) {
-  var dt = context.currentTime - thiskey.ptime;
+function drawspark(thiskey, ts) {
+  var dt = ts - thiskey.ptime;
   if (dt > 6)
     return;
   var size = thiskey.w * (9 - dt) / 9;
@@ -1450,7 +1454,7 @@ function drawspark(thiskey) {
   var points = Math.floor(Math.random() * 5) + 20;
   var dangle = Math.PI / points;
   var vmod = Math.sqrt(thiskey.v) / 10;
-  var fangle = Math.sin(context.currentTime*4) * Math.PI/8;
+  var fangle = Math.sin(ts*4) * Math.PI/8;
   ctx.beginPath();
   ctx.moveTo(x + size, y);
   for (var i = 0; i <= points; i++) {
@@ -1497,7 +1501,6 @@ function animate(timestamp) {
   }
   requestAnimationFrame(animate);
   var modoff = lfdata[0] / 100;
-  var pos = (timestamp - start);
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
   // update particles
@@ -1611,7 +1614,7 @@ function animate(timestamp) {
 
     if (i == 0) {
       // webkit is missing getFloatTimeDomainData, just use 0 if missing
-      if (lfout.getFloatTimeDomainData != undefined)
+      if (lfout && lfout.getFloatTimeDomainData != undefined)
         lfout.getFloatTimeDomainData(lfdata);
       else
         lfdata[0] = 0;
@@ -1651,7 +1654,7 @@ function animate(timestamp) {
     }
     if (keyboxes[i].pressed || keyboxes[i].held ||
       keyboxes[i].sostenuto) {
-      drawspark(keyboxes[i]);
+      drawspark(keyboxes[i], context.currentTime);
     }
   }
   // draw fire on top of it all...
