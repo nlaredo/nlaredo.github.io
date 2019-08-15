@@ -10,19 +10,19 @@
     canvas { background:#007; }
     #config {
       position:fixed; top:75px; right:25px; bottom:25px; left:25px;
-      border:3px solid #ddf; background:#00007777; color:#eef;
+      border:3px solid #ccd; background:#00007777; color:#ccd;
       padding:25px; font:1em sans-serif; overflow-y:auto;
     }
     .ccontainer {
       display:grid;
-      grid-template-rows: repeat(4, 2em);
+      grid-template-rows: repeat(4, 3em);
       grid-template-columns: repeat(4, 1fr);
       grid-auto-flow: column;
     }
     .container2 {
       display:grid;
-      grid-template-rows: repeat(3, 2em);
-      grid-template-columns: repeat(3, 1fr);
+      grid-template-rows: repeat(6, 3em);
+      grid-template-columns: repeat(2, 1fr);
       grid-auto-flow: column;
     }
     a { text-decoration:none }
@@ -33,9 +33,14 @@
     h1,h2,h3,h4,p { text-align: center }
     input { width:4em; }
     label,input { margin:1px; }
-    #license { position:fixed; bottom:25px; right:25px;
-      color:#00f; padding:25px; }
+    #license { position:fixed; top:75px; left:25px;
+      color:#00f; padding:25px; font-size:70%; }
     #license a { color:#00f; }
+    .ccontainer div { margin:auto; width:8em; padding:1px; }
+    .container2 div { margin:auto; width:16em; padding:1px; }
+    input[type=button],input[type=submit] {
+      background: #ccd; width:8em; height:2em;
+    }
   </style>
 </head>
 <body>
@@ -57,14 +62,14 @@ href="https://www.gnu.org/licenses/">https://www.gnu.org/licenses/</a>.
 <canvas id="keyboard" onclick="startme(event)"></canvas>
 <div id="config">
 <h1>PlayMIDI Settings</h1>
-<h4>v20190813 -- Follow development at:
+<h4>v20190814 -- Follow development at:
 <a href="http://twitch.tv/nil4k">twitch.tv/nil4k</a>
 and <a href="http://github.com/nlaredo">GitHub</a>
 and <a href="http://youtube.com/NathanILaredo">YouTube</a></h4>
 <p>Tap or click the area above this window to open this config window
-later...</p>
+while playing...</p>
 <form id="cfgok" action="#">
-<h2><input type="submit" value="OK"></h2>
+<p><input type="submit" value="PLAY!"></p>
 <div class="container2">
 <div><label><input name="soundon" type="checkbox" value="soundon"
 checked> Generate Sounds</input></label></div>
@@ -85,7 +90,7 @@ min="1" max="16"> Mouse Event Channel</input></label></div>
 <div><label><input name="keychan" type="number" value="4"
 min="1" max="16"> PC Key Event Channel</input></label></div>
 </div>
-<h4>Channel Colors </h4>
+<h4>MIDI Channel Colors</h4>
 <div class="ccontainer">
 <div><label><input name="c1" type="color" value="#ff0000">
 Ch 1</input></label></div>
@@ -120,8 +125,8 @@ Ch 15</input></label></div>
 <div><label><input name="c16" type="color" value="#008000">
 Ch 16</input></label></div>
 </div>
-<label><input name="default" type="button" value="Default"
- onclick="makeccolor()"> Reset colors</label></br>
+<p><input name="default" type="button" value="Reset Colors"
+ onclick="makeccolor()"></p>
 </input>
 </form>
 </div>
@@ -140,6 +145,7 @@ var voice = [];         // tracking of synth voices
 var lfo;                // for tracking synth LFO
 var changain;           // channel gain node
 var lfout;              // for drawing LFO data
+var lfdata = new Float32Array(32);
 var moddepth = 50;      // mod depth range in cents (midi default 50 cents)
 var attack=0.01;	// attack speed
 var decay=0.05;	        // decay speed
@@ -149,6 +155,7 @@ var mastertune=440;
 var maxVoices=16;
 var soundon = true;
 var midienabled = false;
+var audioenabled = false;
 var hold1 = false;      // cc64
 var sostenuto = false;  // cc66
 var sostenutolist = []; // notes on at the time sostenuto pressed
@@ -157,6 +164,180 @@ var showoctaves = false;
 var showflames = false;
 var showdebug = false;
 var showconfig = true;
+
+var mididata = [];
+// a bunch of midi constants to avoid magic numbers...
+var smf_meta_events = {
+  SEQUENCE_NUMBER:0x00,
+  TEXT_EVENT:0x01,
+  COPYRIGHT_NOTICE:0x02,
+  SEQUENCE_NAME:0x03,
+  INSTRUMENT_NAME:0x04,
+  LYRIC:0x05,
+  MARKER:0x06,
+  CUE_POINT:0x07,
+  PROGRAM_NAME:0x08,
+  DEVICE_NAME:0x09,
+  CHANNEL_PREFIX:0x20,
+  END_OF_TRACK:0x2f,
+  SET_TEMPO:0x51,
+  SMPTE_OFFSET:0x54,
+  TIME_SIGNATURE:0x58,
+  KEY_SIGNATURE:0x59,
+  SEQUENCER_SPECIFIC:0x74,
+  META_EVENT:0xff, // prefixes all of the above in the midi file
+};
+var midi_status = {
+  NOTEOFF:0x80,
+  NOTEON:0x90,
+  KEY_PRESSURE:0xa0,
+  CTL_CHANGE:0xb0,
+  PGM_CHANGE:0xc0,
+  CHN_PRESSURE:0xd0,
+  PITCH_BEND:0xe0,
+  SYSTEM_PREFIX:0xf0,
+};
+var midi_sys_msg = {
+  SYSTEM_EXCLUSIVE:0xf0,
+  TIME_CODE_QF:0xf1,
+  SONG_POSITION:0xf2,
+  SONG_SELECT:0xf3,
+  TUNE_REQUEST:0xf6,
+  SYSEX_END:0xf7,
+  TIMING_CLOCK:0xf8,
+  START:0xfa,
+  CONTINUNE:0xfb,
+  STOP:0xfc,
+  ACTIVE_SENSING:0xfe,
+  RESET:0xff,
+};
+var midi_ctl = {
+  BANK_SELECT:0x00,
+  MODWHEEL:0x01,
+  BREATH:0x02,
+  LFO_RATE:0x03,
+  FOOT:0x04,
+  PORTAMENTO_TIME:0x05,
+  DATA_ENTRY:0x06,
+  MAIN_VOLUME:0x07,
+  BALANCE:0x08,
+  PAN:0x0a,
+  EXPRESSION:0x0b,
+  MOTIONAL_CTL1:0x0c,
+  MOTIONAL_CTL2:0x0d,
+  MOTIONAL_CTL3:0x0e,
+  GEN_PURPOSE1:0x10,
+  TONE_MODIFY1:0x10,
+  GEN_PURPOSE2:0x11,
+  TONE_MODIFY2:0x11,
+  GEN_PURPOSE3:0x12,
+  GEN_PURPOSE4:0x13,
+  MOTIONAL_EXT1:0x1c,
+  MOTIONAL_EXT2:0x1d,
+  MOTIONAL_EXT3:0x1e,
+  LSB:0x20,  // all above have LSB at above value + 0x20
+  DAMPER_PEDAL:0x40,
+  SUSTAIN:0x40,
+  HOLD:0x40,
+  HOLD1:0x40,
+  PORTAMENTO:0x41,
+  SOSTENUTO:0x42,
+  SOFT_PEDAL:0x43,
+  LEGATO:0x44,
+  HOLD2:0x45,
+  // controllers 70-79 are *not* reset on "reset all controllers"
+  SOUND_VARIATION:0x46,
+  RESONANCE:0x47,
+  RELEASE_TIME:0x48,
+  ATTACK_TIME:0x49,
+  CUTOFF:0x4a,
+  BRIGHTNESS:0x4a,
+  DECAY_TIME:0x4b,
+  VIBRATO_RATE:0x4c,
+  VIBRATO_DEPTH:0x4d,
+  VIBRATO_DELAY:0x4e,
+  SOUND_CONTROLLER10:0x4f,
+  GEN_PURPOSE5:0x50,
+  TONE_VARIATION1:0x50,
+  GEN_PURPOSE6:0x51,
+  TONE_VARIATION2:0x51,
+  GEN_PURPOSE7:0x52,
+  TONE_VARIATION3:0x52,
+  GEN_PURPOSE8:0x53,
+  TONE_VARIATION4:0x53,
+  PORTAMENTO_CTRL:0x54,
+  VELOCITY_LSB:0x58,
+  // controllers 91 - 95 are *not* reset on "reset all controllers"
+  REVERB_DEPTH:0x5b,
+  TREMOLO_DEPTH:0x5e,
+  CELESTE_DEDPTH:0x5e,
+  CHORUS_DEPTH:0x5f,
+  DATA_INCREMENT:0x60,
+  DATA_DECREMENT:0x61,
+  NRPN_LSB:0x62,
+  NRPN_MSB:0x63,
+  RPN_LSB:0x64,
+  RPN_MSB:0x65,
+  ALL_SOUNDS_OFF:0x78,
+  RESET_ALL_CONTROLLERS:0x79, // third byte 0
+  LOCAL:0x7a,
+  ALL_NOTES_OFF:0x7b,
+  OMNI_OFF:0x7c,
+  OMNI_ON:0x7d,
+  MONO:0x7e,
+  POLY:0x7f,
+};
+
+var midi_rpn = {
+  PITCH_BEND_RANGE:0x00,  // mm = semitones, ll = cents, default=mm=2 
+  // old: master fine is adjusted, new gm2: only channel fine is adjusted
+  CHN_FINE_TUNE:0x01,  // -8192*50/8192 - 0 - +8192*50/8192 cent
+  CHN_COARSE_TUNE:0x02,  // -48 - 0 - +48 semitones, ll = ignored
+  TUNING_PGM_SEL:0x03,
+  TUNING_BANK_SEL:0x04,
+  MOD_DEPTH_RANGE:0x05,
+  AZIMUTH_ANGLE:0x3d00,
+  ELEVATION_ANGLE:0x3d01,
+  GAIN:0x3d02,
+  DISTANCE_RATIO:0x3d03,
+  MAX_DISTANCE:0x3d04,
+  GAIN_AT_MAX_DISTANCE:0x3d05,
+  REF_DISTANCE_RATIO:0x3d06,
+  PAN_SPREAD_ANGLE:0x3d07,
+  ROLL_ANGLE:0x3d08,
+  RPN_NULL:0x7f7f,
+};
+
+var midi_nrpn = {
+  GS_VIBRATO_RATE:0x0108,  // -64 - 0(0x40) - +63 (relative)
+  GS_VIBRATO_DEPTH:0x0109,  // -64 - 0(0x40) - +63 (relative)
+  GS_VIBRATO_DELAY:0x010a,  // -64 - 0(0x40) - +63 (relative)
+  // TVF = Time Variant Filter
+  GS_TVF_CUTOFF_FREQ:0x0120,  // -64 - 0(0x40) - +63 (relative)
+  GS_TVF_RESONANCE:0x0121,  // -64 - 0(0x40) - +63 (relative)
+  // TVA = Time Variant Amplifier
+  GS_TVFTVA_ATTACK:0x0163,  // -64 - 0(0x40) - +63 (relative)
+  GS_TVFTVA_DECAY:0x0164,  // -64 - 0(0x40) - +63 (relative)
+  GS_TVFTVA_RELEASE:0x0166,  // -64 - 0(0x40) - +63 (relative)
+  GS_RHYTHM_PITCH_C:0x1800,  // 0x18rr rr = note number (abs)
+  GS_RHYTHM_TVA_LVL:0x1a00,  // 0x1arr rr = note number (abs)
+  // note: panpot -64 = "random", -63(L) - 0(Center) - +63(R)
+  NRPN_GS_RHYTHM_PANPOT:0x1c00,  // 0x1crr rr = note number (abs)
+  NRPN_GS_RHYTHM_REVERB:0x1d00,  // 0x1drr rr = note number (abs)
+  NRPN_GS_RHYTHM_CHORUS:0x1e00,  // 0x1err rr = note number (abs)
+  NRPN_NULL:0x7f7f,
+};
+
+// make all the enum-like objects read-only
+if (Object.freeze) {
+  Object.freeze(smf_meta_events);
+  Object.freeze(midi_status);
+  Object.freeze(midi_sys_msg);
+  Object.freeze(midi_ctl);
+  Object.freeze(midi_rpn);
+  Object.freeze(midi_nrpn);
+}
+
 var ccolor = [];
 function hexrgb(r,g,b) {
   return "#" + ("0" + r.toString(16)).slice(-2) +
@@ -216,18 +397,21 @@ var noiseimg = null;
 var fireimg1 = null;
 var fireimg2 = null;
 
-canvas.crossOrigin = null;
-resize();
+var whitekey = new Image();
 var blackkey = new Image();
+canvas.crossOrigin = null;
 blackkey.crossOrigin = null;
+whitekey.crossOrigin = null;
 blackkey.onload = function () { blackimg = blackkey; };
 blackkey.src = "images/blackkey.png";
-var whitekey = new Image();
-whitekey.crossOrigin = null;
 whitekey.onload = function () { whiteimg = whitekey; };
 whitekey.src = "images/whitekey.png";
 
+resize();
+window.addEventListener('resize', resize, false);
 cfgform.addEventListener('submit', startme, false);
+// start animation below menu
+requestAnimationFrame(animate);
 function toggleconfig(event) {
   // prevent form submit
   if (event) event.preventDefault();
@@ -240,7 +424,7 @@ function toggleconfig(event) {
     setSound(cfgform["soundon"].checked);
     showdebug = cfgform["showdebug"].checked;
     showoctaves = cfgform["showoctaves"].checked;
-    benddn = cfgform["benddn"].value;
+    benddn = -cfgform["benddn"].value;
     bendup = cfgform["bendup"].value;
     touchchan = cfgform["touchchan"].value - 1;
     mousechan = cfgform["mousechan"].value - 1;
@@ -451,6 +635,10 @@ function makekeys()
     var h =  (bk ? bkh : kh);
     var fill = (bk ? '#000' : '#fff');
     var pfill = ccolor[0]; // replaced with channel color later
+    var gradient = ctx.createLinearGradient(x+keypan, y+kh/2,
+        x+keypan+kw, y+kh/2-1);
+    gradient.addColorStop(0, '#0008');
+    gradient.addColorStop(0.25, '#0000');
 
     keyboxes.push({
       x: x,
@@ -460,12 +648,14 @@ function makekeys()
       v: 0,
       note: i,
       pressed: false,
+      sostenuto: false,
       isBlack: bk,
       fill: fill,
       held: false,
       ptime: 0,
       sfill: '#fff',
       pfill: pfill,
+      grd: gradient,
       pnote: pnote,
     });
     wpos += bk ? 0 : 1;
@@ -581,6 +771,7 @@ function mousewheel(event) {
   var delta = event.deltaY;
   if (event.shiftKey) { // wheel + shift = pan left/right (deltaY)
     updatekeypan(0, 1.0, delta / keyscale);
+    makekeys();
   } else { // wheel = touchpad pan up/down (deltaY)
     var scale = (kh + delta) / kh;
     // wheel + ctrlKey = touchpad pinch zoom (deltaY)
@@ -592,7 +783,7 @@ function mousewheel(event) {
     scale = capkeyscale(scale, 0);
     updatekeypan(x, scale, x);
     keyscale *= scale;
-    resize();
+    makekeys();
   }
 }
 
@@ -617,6 +808,7 @@ function handletouch(event) {
       var x = event.touches[0].clientX;
       if (oldx >= 0) {
         updatekeypan(oldx, 1.0, x);
+        makekeys();
       }
       oldx = x;
       return;
@@ -642,7 +834,7 @@ function handletouch(event) {
 
         keyscale *= scale;
 
-        resize();
+        makekeys();
       }
       olddist = d;
       oldxc = x2;
@@ -823,6 +1015,7 @@ function keydown(event) {
     return;
   if (event.code == 'ArrowLeft' || event.code == 'ArrowRight') {
     updatekeypan(bw * keytable[i].n, 1, 0);
+    makekeys();
     return;
   }
   if (keyspressed.indexOf(i) < 0) {
@@ -928,7 +1121,6 @@ function startme(event) {
   lfout = context.createAnalyser();
   lfout.fftSize = 32;
   lfo.env.connect(lfout);
-  lfdata = new Float32Array(32);
   channelgain = context.createGain();
   channelgain.connect(context.destination);
   channelgain.gain.value = dbRatio(-10);
@@ -952,12 +1144,10 @@ function startme(event) {
       env: envelope,
     });
   }
-  resize();
   if (navigator.requestMIDIAccess)
     navigator.requestMIDIAccess().then(onMIDIInit, onMIDIReject);
   else
     midienabled = false;
-  requestAnimationFrame(animate);
   // unregister handler that called this function
   // point it somewhere else...
   canvas.onclick = null;
@@ -965,7 +1155,6 @@ function startme(event) {
   cfgform.addEventListener('submit', toggleconfig, false);
   // register some event handlers
   var opt = {passive:false};
-  window.addEventListener('resize', resize, opt);
   window.addEventListener('keydown', keydown, opt);
   window.addEventListener('keyup', keyup, opt);
   window.addEventListener('mousedown', mousedown, opt);
@@ -1009,8 +1198,8 @@ function MIDIMessageEventHandler(event) {
   // Mask off the lower nibble (MIDI channel, which we don't care about)
   var channel = event.data[0] & 0x0f;
   switch (event.data[0] & 0xf0) {
-    case 0xf0: // special cases
-      if (event.data[0] == 0xf8) {  // midi beat clock
+    case midi_status.SYSTEM_PREFIX:
+      if (event.data[0] == midi_status.TIMING_CLOCK) {
         var now = performance.now();
         var dt = now - f8ts;
         f8ct += 1;
@@ -1022,30 +1211,32 @@ function MIDIMessageEventHandler(event) {
         }
       }
       break;
-    case 0xb0: // midi cc
-      if (event.data[1] == 1) { // modulation wheel
-        cc01(channel, event.data[2]);
-      }
-      if (event.data[1] == 64) { // hold1 (damper)
-        cc64(channel, event.data[2]);
-      }
-      if (event.data[1] == 66) { // sostenuto
-        cc66(channel, event.data[2]);
-      }
-      if (event.data[1] == 67) { // soft
-        cc67(channel, event.data[2]);
+    case midi_status.CTL_CHANGE:
+      switch(event.data[1]) {
+        case midi_ctl.MODWHEEL:
+          cc01(channel, event.data[2]);
+          break;
+        case midi_ctl.HOLD1:
+          cc64(channel, event.data[2]);
+          break;
+        case midi_ctl.SOSTENUTO:
+          cc66(channel, event.data[2]);
+          break;
+        case midi_ctl.SOFT_PEDAL:
+          cc67(channel, event.data[2]);
+          break;
       }
       break;
-    case 0xe0: // pitch wheel
+    case midi_status.PITCH_BEND:
       pitchBend(event.data[1] | (event.data[2] << 7));
       break;
-    case 0x90:  // note on
+    case midi_status.NOTEON:
       if (event.data[2]!=0) {  // if velocity != 0, this is a note-on message
         noteOn(channel, event.data[1], event.data[2]);
         break;
       }
       // if velocity == 0, fall through to note off case
-    case 0x80:  // note off
+    case midi_status.NOTEOFF:
       noteOff(channel, event.data[1]);
       break;
   }
@@ -1077,6 +1268,9 @@ function cc66(channel, value) {
     }
 
   } else {
+    for (var i = 0; i < kct; i++) {
+      keyboxes[i].sostenuto = false;
+    }
     if (soundon)
       stopSustain();
   }
@@ -1115,6 +1309,10 @@ function noteOff(channel, noteNumber) {
   if (noteNumber < kct) {
     keyboxes[noteNumber].pressed = false;
     keyboxes[noteNumber].held = hold1;
+    if (sostenuto) {
+      keyboxes[noteNumber].sostenuto =
+        (sostenutolist.indexOf(noteNumber) >= 0);
+    }
   }
   if (soundon) {
     stopNote(channel, noteNumber);
@@ -1128,11 +1326,14 @@ ctx.roundRect = function(x,y,w,h,r) {
   if (r > w / 2)
     r = w / 2;
   var r2 = r;
+  // square off tops and bottoms when they hit edges
   if ((1+innerHeight-kh)-(y+h) < r) {
     r2 = (1+innerHeight-kh)-(y+h);
     if (r2 < 1)
       r2 = 0;
   }
+  if(y < r)
+    r = y < 0 ? 0 : y;
   ctx.beginPath();
   ctx.moveTo(x + r, y);
   ctx.lineTo(x + w - r, y);  // top
@@ -1333,9 +1534,17 @@ function animate(timestamp) {
         keyboxes[i].w, keyboxes[i].h);
     }
     if (keyboxes[i].pressed) {
+      if (!shadow) {
+        ctx.fillStyle = keyboxes[i].grd;
+        ctx.fillRect(keypan + keyboxes[i].x, keyboxes[i].y,
+          keyboxes[i].w, keyboxes[i].h);
+        shadow = true;
+      }
       ctx.fillStyle = keyboxes[i].pfill;
       ctx.fillRect(keypan + keyboxes[i].x, keyboxes[i].y,
         keyboxes[i].w, keyboxes[i].h);
+    } else {
+        shadow = false;
     }
     if (bw > 5 && (i % 12) == 0) {
       // place note name centered on the bottom of every c
@@ -1437,7 +1646,8 @@ function animate(timestamp) {
       (keyboxes[i].x + keypan > innerWidth)) {
       continue;  // skip keys outside view
     }
-    if (keyboxes[i].pressed || keyboxes[i].held) {
+    if (keyboxes[i].pressed || keyboxes[i].held ||
+      keyboxes[i].sostenuto) {
       drawspark(keyboxes[i]);
     }
   }
@@ -1447,7 +1657,6 @@ function animate(timestamp) {
   }
 
   if (showdebug) {
-    //ctx.clearRect(0, 0, canvas.width, 60);
     ctx.fillStyle = '#ffd';
     ctx.fillText('MIDI Device:' + mididev, 30 , 40);
     var hexmidi = '';
