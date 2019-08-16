@@ -15,13 +15,13 @@
     }
     .ccontainer {
       display:grid;
-      grid-template-rows: repeat(4, 3em);
+      grid-template-rows: repeat(4, 2em);
       grid-template-columns: repeat(4, 1fr);
       grid-auto-flow: column;
     }
     .container2 {
       display:grid;
-      grid-template-rows: repeat(6, 3em);
+      grid-template-rows: repeat(8, 2em);
       grid-template-columns: repeat(2, 1fr);
       grid-auto-flow: column;
     }
@@ -32,6 +32,8 @@
     a:active { background:#f44; color:#ffe; }
     h1,h2,h3,h4,p { text-align: center }
     input { width:4em; }
+    span { display:inline-block; width:5em; }
+    select { width:11em; }
     label,input { margin:1px; }
     #license { position:fixed; top:75px; left:25px;
       color:#00f; padding:25px; font-size:70%; }
@@ -62,7 +64,7 @@ href="https://www.gnu.org/licenses/">https://www.gnu.org/licenses/</a>.
 <canvas id="keyboard""></canvas>
 <div id="config">
 <h1>PlayMIDI Settings</h1>
-<h4>v20190814 -- Follow development at:
+<h4>v20190815 -- Follow development at:
 <a href="http://twitch.tv/nil4k">twitch.tv/nil4k</a>
 and <a href="http://github.com/nlaredo">GitHub</a>
 and <a href="http://youtube.com/NathanILaredo">YouTube</a></h4>
@@ -83,6 +85,10 @@ Show MIDI Events</input></label></div>
 defaultChecked="false"> Show Octave Lines</input></label></div>
 <div><label><input name="mastertune" type="number" value="440"
 min="415.3" max="466.2" step="any"> Master Tuning</input></label></div>
+<div><span>MIDI in:</span><select
+name="midiin"><option value="none">none</option></select></div>
+<div><span>MIDI out:</span><select
+name="midiout"><option value="none">none</option></select></div>
 <div><label><input name="benddn" type="number"
 value="-12" min="-24" max="-1"> - Pitch Bend</input></label></div>
 <div><label><input name="bendup" type="number"
@@ -157,7 +163,6 @@ var release=0.15;	// release speed
 var mastertune=440;
 var maxVoices=16;
 var soundon = false;
-var midienabled = false;
 var hold1 = false;      // cc64
 var sostenuto = false;  // cc66
 var sostenutolist = []; // notes on at the time sostenuto pressed
@@ -169,6 +174,10 @@ var showdebug = false;
 var showconfig = true;
 
 var mididata = [];
+var midiinputs = [{ id:null, name:'midi disabled', type:'error' }];
+var midioutputs = [{ id:null, name:'midi disabled', type:'error' }];
+var midiout = null;  // id of selected device or null for none
+var midiin = null;   // id of selected device or null for none
 // a bunch of midi constants to avoid magic numbers...
 var smf_meta_events = {
   SEQUENCE_NUMBER:0x00,
@@ -377,19 +386,16 @@ var keyboxes = [];
 var particles = [];
 var gravity = 0.6;
 var mididbg = [];
-var mididev = '(midi disabled)';
 var notefrac = 0;  // for tracking pitchbend
 var bendmult = 1;  // for playing pitchbend
 var bendup = 2;  // pitchbend range in semitones
 var benddn = 12;  // pitchbend range in semitones
-var keybed = 69.81818182; // 128 note keyboard width in inches
-var keydepth = 6; // keyboard depth in inches, always 6 for full size keys
+var keybed = 69.81818182; // 128 key full size midi keyboard in inches
+var keydepth = 6; // depth in inches, always 6 for full size keys
 var bkeydepth = 3.5; // black key depth in inches, 3.5 for full size keys
-var keyscale = 0.0;  // allow resizing of keyboard, 0 = scale to 88key
+var keyscale = 0.0;  // allow resizing of keyboard, 0.0 = scale to 88
 var keypan = 0;  // allow touch interface panning of the keyboard
-var notecount = 0; // counts number of note on events for easter eggs
-// note, this should probably be 128 keys unless you want to break everything
-var kct = 128; // note: 68.818 inches for 128 keys, 48 inches for 88 keys
+var kct = 128; // note: 68.818 inches for 128 keys, given 48 for 88
 var bw;  // black key width in pixels
 var kh;  // keyboard height in pixels
 var bkh; // black key height in pixels
@@ -431,15 +437,13 @@ function enableevents() {
   // enable midi events
   if (navigator.requestMIDIAccess)
     navigator.requestMIDIAccess().then(gotMIDI, deniedMIDI);
-  else
-    midienabled = false;
 }
 // start animation behind menu
 requestAnimationFrame(animate);
 enableevents();
 function failaudio() { soundon = false; }
 function startaudio() {
-  setSound(cfgform["soundon"].checked);
+  setSound(cfgform.soundon.checked);
   if (lfo.start < 0) {
     lfo.osc.start();
     lfo.start = 0;
@@ -462,20 +466,20 @@ function toggleconfig(event) {
   }
   if (showconfig) {
     // validated form user is asking to dismiss
-    setSound(cfgform["soundon"].checked);
-    showdebug = cfgform["showdebug"].checked;
-    showoctaves = cfgform["showoctaves"].checked;
-    mastertune = cfgform["mastertune"].value;
-    benddn = -cfgform["benddn"].value;
-    bendup = cfgform["bendup"].value;
-    touchchan = cfgform["touchchan"].value - 1;
-    mousechan = cfgform["mousechan"].value - 1;
-    keychan = cfgform["keychan"].value - 1;
+    setSound(cfgform.soundon.checked);
+    showdebug = cfgform.showdebug.checked;
+    showoctaves = cfgform.showoctaves.checked;
+    mastertune = cfgform.mastertune.value;
+    benddn = -cfgform.benddn.value;
+    bendup = cfgform.bendup.value;
+    touchchan = cfgform.touchchan.value - 1;
+    mousechan = cfgform.mousechan.value - 1;
+    keychan = cfgform.keychan.value - 1;
     for (var i = 0; i < 15; i++) {
       ccolor[i] = cfgform["c"+(i+1)].value;
     }
-    showfountain = cfgform["showfountain"].checked;
-    showflames = cfgform["showflames"].checked;
+    showfountain = cfgform.showfountain.checked;
+    showflames = cfgform.showflames.checked;
     if (showflames)
       resize();
   }
@@ -762,6 +766,8 @@ function mousemove(event) {
 
 function mouseup(event) {
   event.preventDefault();
+  if (event.type != 'contextmenu' && event.button == 2)
+    return;  // squash this duplicated event
   if (event.clientY < 75 || event.type == 'contextmenu') {
     toggleconfig(event);
   }
@@ -1179,26 +1185,52 @@ function initaudio(event) {
     });
   }
 }
+function selectmidi() {
+  cfgform.midiin.options.length = 0;
+  cfgform.midiout.options.length = 0;
+  midiinputs.forEach(function(input) {
+    if (midiin == null && input.id != 'none') {
+      midiin = input.id;
+    }
+    var sel = (midiin == input.id);
+    cfgform.midiin.options.add(new Option(input.id + " - " +
+      input.name, input.id, sel, sel));
+  });
+  midioutputs.forEach(function(output) {
+    var sel = (midiout == output.id);
+    cfgform.midiout.options.add(new Option(output.id + " - " +
+      output.name, output.id, sel, sel));
+  });
+}
 function connectMIDI() {
-  var haveAtLeastOneDevice=false;
-  var inputs=midiAccess.inputs.values();
-  mididev = '';
-  midiAccess.inputs.forEach(function(input) { mididev += '    ' + input.name;});
-  if (mididev.length < 4)
-    mididev = "...connect a midi device to visualize...";
-  for (var input = inputs.next(); input && !input.done; input = inputs.next()) {
-          input.value.onmidimessage = midimessage;
-          haveAtLeastOneDevice = true;
-  }
+  midiinputs = [];
+  midiinputs.push({ id:'none', name:'none', type:'input' });
+  midiAccess.inputs.forEach(function(input) {
+    input.onmidimessage = midimessage;
+    midiinputs.push({
+      id: input.id,
+      name: input.name,
+      type: input.type,
+    });
+  });
+  midioutputs = [];
+  midioutputs.push({ id:'none', name:'none', type:'output' });
+  midiAccess.outputs.forEach(function(output) {
+    midioutputs.push({
+      id: output.id,
+      name: output.name,
+      type: output.type,
+    });
+  });
+  selectmidi();  // update possible midi selections
 }
 function gotMIDI(midi) {
   midiAccess = midi;
   connectMIDI();
   midiAccess.onstatechange=connectMIDI;
-  midienabled = true;
 }
 function deniedMIDI(err) {
-  midienabled = false;
+  midiout = midiin = null;
 }
 var f8ts = 0;
 var f8ct = 0;
@@ -1207,12 +1239,11 @@ function midimessage(event) {
   if (mididbg.length > 15)
     mididbg = '';
   mididbg = [...mididbg, ...event.data];
-  // Mask off the lower nibble (MIDI channel, which we don't care about)
   var channel = event.data[0] & 0x0f;
   switch (event.data[0] & 0xf0) {
     case midi_status.SYSTEM_PREFIX:
       if (event.data[0] == midi_sys.TIMING_CLOCK) {
-        var now = performance.now();
+        var now = event.timeStamp;
         var dt = now - f8ts;
         f8ct += 1;
         if (dt > 1000) {  // update tempo after >= 1s of beat clocks
@@ -1311,7 +1342,6 @@ function noteOn(channel, noteNumber, velocity) {
   if (soundon) {
     startNote(channel, noteNumber, velocity);
   }
-  notecount += 1;
 }
 function noteOff(channel, noteNumber) {
   for (var i = 0, j = noteboxes.length; i < j; i++) {
@@ -1664,17 +1694,15 @@ function animate(timestamp) {
 
   if (showdebug) {
     ctx.fillStyle = '#ffd';
-    ctx.fillText('MIDI Device:' + mididev, 30 , 40);
     var hexmidi = '';
     mididbg.forEach(function(val) {
       hexmidi += ' ' + (val + 256).toString(16).substr(-2);
     });
     ctx.fillText('MIDI Debug: ' + hexmidi, 30 , 30);
   }
-  ctx.fillStyle = '#fff';
-  ctx.fillText(notecount, 30, 60);
   if (tempo > 0) {
-    ctx.fillText('Tempo = ' + tempo + ' bpm', 30, 10);
+    ctx.fillStyle = '#fff';
+    ctx.fillText('Tempo = ' + tempo + ' bpm', 30, 40);
   }
   last = timestamp;
   frame += 1;
