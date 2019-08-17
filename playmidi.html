@@ -1635,9 +1635,18 @@ function animate(timestamp) {
   var modoff = lfdata[0] / 100;
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+  if (keyshadow) {
+    ctx.save();  // turn off shadows for the particles
+    ctx.shadowColor = 'rgb(0,0,0,0)';
+    ctx.shadowOffsetX = ctx.shadowOffsetY = 0;
+    ctx.shadowBlur = 0;
+  }
   // update particles
   for (var i = 0, j = particles.length; i < j; i++) {
     particles[i].update();
+  }
+  if (keyshadow) {
+    ctx.restore();
   }
   // delete particles that fall off screen
   for (var i = particles.length - 1; i >= 0; i--) {
