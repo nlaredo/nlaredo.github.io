@@ -25,8 +25,8 @@
       grid-template-columns: repeat(2, 1fr);
       grid-auto-flow: column;
     }
-    li { padding:2px;background:#1177; }
-    li:nth-child(odd) { background:#3377; }
+    li { padding:2px; }
+    li:nth-child(even) { background:#0007; }
     a { text-decoration:none }
     a:link { color:#ff4; }
     a:visited { color:#f44; }
@@ -108,6 +108,8 @@ min="1" max="16"> Mouse Event Channel</input></label></div>
 min="1" max="16"> PC Key Event Channel</input></label></div>
 <div><label><input name="keyalpha" type="number" value="1"
 min="0" max="1" step="any"> Key Alpha (visibility)</input></label></div>
+<div><label><input name="keyshadow" type="checkbox" value="keyshadow"
+defaultChecked="false"> Shadow Overload</input></label></div>
 </div>
 <h4>MIDI Channel Colors</h4>
 <div class="ccontainer">
@@ -409,6 +411,7 @@ var bkeydepth = 3.5; // black key depth in inches, 3.5 for full size keys
 var keyscale = 0.0;  // allow resizing of keyboard, 0.0 = scale to 88
 var keypan = 0;  // allow touch interface panning of the keyboard
 var keyalpha = 1; // allow making the keys disappear for streaming
+var keyshadow = false; // option to go crazy with context shadows
 var kct = 128; // note: 68.818 inches for 128 keys, given 48 for 88
 var bw;  // black key width in pixels
 var kh;  // keyboard height in pixels
@@ -544,6 +547,16 @@ function toggleconfig(event) {
     mousechan = cfgform.mousechan.value - 1;
     keychan = cfgform.keychan.value - 1;
     keyalpha = cfgform.keyalpha.value;
+    keyshadow = cfgform.keyshadow.checked;
+    if (keyshadow) {
+      ctx.shadowColor = 'rgb(0,0,0,1)';
+      ctx.shadowOffsetX = ctx.shadowOffsetY = 2;
+      ctx.shadowBlur = 10;
+    } else {
+      ctx.shadowColor = 'rgb(0,0,0,0)';
+      ctx.shadowOffsetX = ctx.shadowOffsetY = 0;
+      ctx.shadowBlur = 0;
+    }
     for (var i = 0; i < 15; i++) {
       ccolor[i] = cfgform["c"+(i+1)].value;
     }
