@@ -106,6 +106,8 @@ min="1" max="16"> Touch Event Channel</input></label></div>
 min="1" max="16"> Mouse Event Channel</input></label></div>
 <div><label><input name="keychan" type="number" value="4"
 min="1" max="16"> PC Key Event Channel</input></label></div>
+<div><label><input name="keyalpha" type="number" value="1"
+min="0" max="1" step="any"> Key Alpha (visibility)</input></label></div>
 </div>
 <h4>MIDI Channel Colors</h4>
 <div class="ccontainer">
@@ -406,6 +408,7 @@ var keydepth = 6; // depth in inches, always 6 for full size keys
 var bkeydepth = 3.5; // black key depth in inches, 3.5 for full size keys
 var keyscale = 0.0;  // allow resizing of keyboard, 0.0 = scale to 88
 var keypan = 0;  // allow touch interface panning of the keyboard
+var keyalpha = 1; // allow making the keys disappear for streaming
 var kct = 128; // note: 68.818 inches for 128 keys, given 48 for 88
 var bw;  // black key width in pixels
 var kh;  // keyboard height in pixels
@@ -540,6 +543,7 @@ function toggleconfig(event) {
     touchchan = cfgform.touchchan.value - 1;
     mousechan = cfgform.mousechan.value - 1;
     keychan = cfgform.keychan.value - 1;
+    keyalpha = cfgform.keyalpha.value;
     for (var i = 0; i < 15; i++) {
       ccolor[i] = cfgform["c"+(i+1)].value;
     }
@@ -1777,6 +1781,12 @@ function animate(timestamp) {
     updatefire();
   }
 
+  if (keyalpha == 0) {
+    ctx.clearRect(0, canvas.height - kh, canvas.width, canvas.height);
+  } else if (keyalpha < 1) { 
+    ctx.fillStyle = 'rgba(0, 0, 119,'+(1-keyalpha)+')';
+    ctx.fillRect(0, canvas.height - kh, canvas.width, canvas.height);
+  }
   if (showdebug) {
     ctx.fillStyle = '#ffd';
     var lines = 32;
