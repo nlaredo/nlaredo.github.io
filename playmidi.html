@@ -171,6 +171,7 @@ var lfo;                // for tracking synth LFO
 var lfout;              // for drawing LFO data
 var lfdata = new Float32Array(32);
 var moddepth = 50;      // mod depth range in cents (midi default 50 cents)
+var modoff = 0;         // fractional note offset for visual modwheel
 var attack=0.01;	// attack speed
 var decay=0.05;	        // decay speed
 var sustain=0.75;       // sustain level
@@ -548,15 +549,6 @@ function toggleconfig(event) {
     keychan = cfgform.keychan.value - 1;
     keyalpha = cfgform.keyalpha.value;
     keyshadow = cfgform.keyshadow.checked;
-    if (keyshadow) {
-      ctx.shadowColor = 'rgb(0,0,0,1)';
-      ctx.shadowOffsetX = ctx.shadowOffsetY = 2;
-      ctx.shadowBlur = 10;
-    } else {
-      ctx.shadowColor = 'rgb(0,0,0,0)';
-      ctx.shadowOffsetX = ctx.shadowOffsetY = 0;
-      ctx.shadowBlur = 0;
-    }
     for (var i = 0; i < 15; i++) {
       ccolor[i] = cfgform["c"+(i+1)].value;
     }
@@ -1424,14 +1416,7 @@ function cc67(channel, value) {
 function noteOn(channel, noteNumber, velocity) {
   if (soft)
     velocity /= 3.0;
-  noteboxes.push({
-    y: canvas.height - kh,
-    h: 1,
-    n: noteNumber,
-    v: velocity,
-    playing: true,
-    pfill:ccolor[channel],
-  });
+  noteboxes.push(new NoteBox(channel, noteNumber, velocity));
   if (noteNumber < kct) {
     keyboxes[noteNumber].v = velocity;
     keyboxes[noteNumber].ptime = context.currentTime;
@@ -1584,7 +1569,7 @@ function drawspark(thiskey, ts) {
   var points = Math.floor(Math.random() * 5) + 20;
   var dangle = Math.PI / points;
   var vmod = Math.sqrt(thiskey.v) / 10;
-  var fangle = Math.sin(ts*4) * Math.PI/8;
+  var fangle = Math.sin(thiskey.note * Math.PI/16 + ts*3) * Math.PI/8;
   ctx.beginPath();
   ctx.moveTo(x + size, y);
   for (var i = 0; i <= points; i++) {
@@ -1622,39 +1607,13 @@ function drawspark(thiskey, ts) {
   ctx.fill();
   ctx.stroke();
 }
-
-ctx.font = '11px sans-serif';
-function animate(timestamp) {
-  var dt = timestamp - last;
-  if (start <= 0) {
-    start = timestamp;
-    if (canvas.height != innerHeight || canvas.width != innerWidth)
-      resize();  // work around weird bug style recalculation on startup
-  }
-  requestAnimationFrame(animate);
-  var modoff = lfdata[0] / 100;
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-
+function drawkeyboard() {
   if (keyshadow) {
     ctx.save();  // turn off shadows for the particles
-    ctx.shadowColor = 'rgb(0,0,0,0)';
-    ctx.shadowOffsetX = ctx.shadowOffsetY = 0;
-    ctx.shadowBlur = 0;
+    ctx.shadowColor = 'rgb(0,0,0,1)';
+    ctx.shadowOffsetX = ctx.shadowOffsetY = 2;
+    ctx.shadowBlur = 10;
   }
-  // update particles
-  for (var i = 0, j = particles.length; i < j; i++) {
-    particles[i].update();
-  }
-  if (keyshadow) {
-    ctx.restore();
-  }
-  // delete particles that fall off screen
-  for (var i = particles.length - 1; i >= 0; i--) {
-    if (particles[i].y >= innerHeight - kh) {
-      particles.splice(i, 1);
-    }
-  }
-
   // draw white keys first
   ctx.strokeStyle = '#000';
   for (var i = 0, j = keyboxes.length; i < j; i++) {
@@ -1744,36 +1703,72 @@ function animate(timestamp) {
         keyboxes[i].w, keyboxes[i].h);
     }
   }
+  if (keyshadow) {
+    ctx.restore();
+  }
+}
 
-  for (var i = 0, j = noteboxes.length; i < j; i++) {
-    var thisnote = noteboxes[i];
-    var y = thisnote.y;
-    var h = thisnote.h;
-    var n = thisnote.n;
-    var v = thisnote.v;
+function NoteBox(channel, noteNumber, velocity) {
+  this.y = canvas.height - kh;
+  this.h = 1;
+  this.n = noteNumber;
+  this.v = velocity;
+  this.playing = true;
+  this.pfill = ccolor[channel];
+
+  this.update = function(dt) {
+    var y = this.y;
+    var h = this.h;
+    var n = this.n;
+    var v = this.v;
     var x = keyboxes[n].x + keypan + bw * modoff + bw * notefrac;
 
-    if (i == 0) {
-      // webkit is missing getFloatTimeDomainData, just use 0 if missing
-      if (lfout && lfout.getFloatTimeDomainData != undefined)
-        lfout.getFloatTimeDomainData(lfdata);
-      else
-        lfdata[0] = 0;
-    }
-    thisnote.y -= dy * dt / framerate;
-    if (thisnote.playing == true) {
-      thisnote.h += dy * dt / framerate;
-      if (thisnote.h > innerHeight - kh) {
+    this.y -= dy * dt / framerate;
+    if (this.playing == true) {
+      this.h += dy * dt / framerate;
+      if (this.h > innerHeight - kh) {
         // clip tall notes to viewing area
-        thisnote.h = innerHeight - kh;
-        thisnote.y = 0;
+        this.h = innerHeight - kh;
+        this.y = 0;
       }
     }
-    ctx.fillStyle = thisnote.pfill + (88 + v).toString(16);
-    ctx.strokeStyle = thisnote.pfill + 'ff';
+    ctx.fillStyle = this.pfill + (88 + v).toString(16);
+    ctx.strokeStyle = this.pfill + 'ff';
     ctx.roundRect(x, y, keyboxes[n].w, h, bw);
     ctx.fill();
     ctx.stroke();
+  }
+}
+
+ctx.font = '11px sans-serif';
+function animate(timestamp) {
+  var dt = timestamp - last;
+  if (start <= 0) {
+    start = timestamp;
+    if (canvas.height != innerHeight || canvas.width != innerWidth)
+      resize();  // work around weird bug style recalculation on startup
+  }
+  requestAnimationFrame(animate);
+  // webkit is missing getFloatTimeDomainData, just use 0 if missing
+  if (lfout && lfout.getFloatTimeDomainData != undefined)
+    lfout.getFloatTimeDomainData(lfdata);
+  modoff = lfdata[0] / 100;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // update particles
+  for (var i = 0, j = particles.length; i < j; i++) {
+    particles[i].update();
+  }
+  // delete particles that fall off screen
+  for (var i = particles.length - 1; i >= 0; i--) {
+    if (particles[i].y >= innerHeight - kh) {
+      particles.splice(i, 1);
+    }
+  }
+  if (keyalpha > 0)
+    drawkeyboard();
+  for (var i = 0, j = noteboxes.length; i < j; i++) {
+    noteboxes[i].update(dt);
   }
   // delete noteboxes that scroll off screen
   for (var i = noteboxes.length - 1; i >= 0; i--) {
@@ -1803,7 +1798,7 @@ function animate(timestamp) {
     updatefire();
   }
 
-  if (keyalpha == 0) {
+  if (keyalpha <= 0) {
     ctx.clearRect(0, canvas.height - kh, canvas.width, canvas.height);
   } else if (keyalpha < 1) { 
     ctx.fillStyle = 'rgba(0, 0, 119,'+(1-keyalpha)+')';
