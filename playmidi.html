@@ -21,7 +21,7 @@
     }
     .container2 {
       display:grid;
-      grid-template-rows: repeat(8, 2em);
+      grid-template-rows: repeat(9, 2em);
       grid-template-columns: repeat(2, 1fr);
       grid-auto-flow: column;
     }
@@ -112,6 +112,8 @@ min="0" max="1" step="any"> Key Alpha (visibility)</input></label></div>
 defaultChecked="false"> Shadow Overload</input></label></div>
 <div><label><input name="showspect" type="checkbox" value="showspect"
 defaultChecked="false"> Show Spectogram</input></label></div>
+<div><label><input name="psize" type="number" value="1"
+min="1" max="9" step="any"> Particle Size (pixels)</input></label></div>
 </div>
 <h4>MIDI Channel Colors</h4>
 <div class="ccontainer">
@@ -407,6 +409,7 @@ var noteboxes = [];
 var keyboxes = [];
 var particles = [];
 var maxparticles = 2000;
+var psize = 2;
 var gravity = 0.6;
 var midilog = [];  // log for all generated/received events
 var notefrac = 0;  // for tracking pitchbend
@@ -555,6 +558,7 @@ function toggleconfig(event) {
     mousechan = cfgform.mousechan.value - 1;
     keychan = cfgform.keychan.value - 1;
     keyalpha = cfgform.keyalpha.value;
+    psize = cfgform.psize.value;
     keyshadow = cfgform.keyshadow.checked;
     for (var i = 0; i < 15; i++) {
       ccolor[i] = cfgform["c"+(i+1)].value;
@@ -733,9 +737,10 @@ function resize()
   canvas.height = innerHeight;
   makekeys();
   if (showflames) {
-    noiseimg = new ImageData(innerWidth, innerHeight - kh);
-    fireimg1 = new ImageData(innerWidth, innerHeight - kh);
-    fireimg2 = new ImageData(innerWidth, innerHeight - kh);
+    var h = innerHeight - kh - Math.round(2 * keyscale);
+    noiseimg = new ImageData(innerWidth, h);
+    fireimg1 = new ImageData(innerWidth, h);
+    fireimg2 = new ImageData(innerWidth, h);
     makenoiseimage();
   }
 }
@@ -1562,12 +1567,11 @@ function Dot(x, y, dx, dy, c) {
     this.x += this.dx;
     this.y += this.dy;
     this.dy += gravity;
-    if (this.y > innerHeight - kh) {
-      this.y = innerHeight - kh;
-      this.dy = 0;
+    if (this.y > innerHeight - kh - 2) {
+      this.dx = this.dy = 0;
     }
     ctx.fillStyle = this.c;
-    ctx.fillRect(this.x, this.y, 2, 2);
+    ctx.fillRect(this.x, this.y, psize, psize);
   }
 }
 var splortstart = 0;
@@ -1583,6 +1587,8 @@ function drawspark(thiskey, ts) {
     return;
   }
   var smod = (9 - dt) / 9;
+  if (showflames)
+    smod *= 0.75;
   var size = thiskey.w * smod;
   var x = keypan + thiskey.x + thiskey.w / 2;
   var y = thiskey.y+1;
@@ -1600,11 +1606,12 @@ function drawspark(thiskey, ts) {
     var dy = Math.cos(i * dangle + wiggle + rot);
     var r = Math.random() * size/2 + size;
     var v = Math.random() * 6 + 6;
+    v *= smod;
     if (i & 1) {
       r *= 0.55;
     } else if (i > points / 2 - 5 && i < points / 2 + 5) {
       // for the five "middle" spark points, shoot particles
-      v *= vmod * smod;
+      v *= vmod;
       var c = v > 11.5 ? '#fff' : thiskey.sfill;
       if (splorttime < splortmax) {
         dx = Math.sin(2*rot+wiggle);
@@ -1809,7 +1816,7 @@ function animate(timestamp) {
   }
   // delete particles that fall off screen
   for (var i = particles.length - 1; i >= 0; i--) {
-    if (particles[i].y >= innerHeight - kh) {
+    if (particles[i].y > innerHeight - kh - 2) {
       particles.splice(i, 1);
     }
   }
@@ -1831,8 +1838,8 @@ function animate(timestamp) {
   ctx.beginPath();  // seems required to stop artifact
   // draw red line at the top of keys
   ctx.fillStyle = '#f00';
-  ctx.fillRect(0, canvas.height - kh - 2*keyscale,
-    canvas.width, 1+2*keyscale);
+  ctx.fillRect(0, innerHeight - kh - 2*keyscale,
+    innerWidth, 1+2*keyscale);
 
   // draw sparks for all notes pressed or held
   for (var i = 0; i < kct; i++) {
@@ -1851,7 +1858,7 @@ function animate(timestamp) {
   }
 
   if (keyalpha <= 0) {
-    ctx.clearRect(0, canvas.height - kh, canvas.width, canvas.height);
+    //ctx.clearRect(0, canvas.height - kh, canvas.width, canvas.height);
   } else if (keyalpha < 1) { 
     ctx.fillStyle = 'rgba(0, 0, 119,'+(1-keyalpha)+')';
     ctx.fillRect(0, canvas.height - kh, canvas.width, canvas.height);
