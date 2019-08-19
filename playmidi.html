@@ -87,7 +87,7 @@ Generate Flames</input></label></div>
 <div><label><input name="showfountain" type="checkbox"
 value="showfountain"> Bellagio Fountain</input></label></div>
 <div><label><input name="showdebug" type="checkbox" value="showdebug">
-Show MIDI Events</input></label></div>
+Show Debug Info</input></label></div>
 <div><label><input name="showoctaves" type="checkbox" value="showoctaves"
 defaultChecked="false"> Show Octave Lines</input></label></div>
 <div><label><input name="mastertune" type="number" value="440"
@@ -104,12 +104,14 @@ value="-12" min="-24" max="-1"> Pitch Bend Neg</input></label></div>
 min="1" max="16"> Touch Event Channel</input></label></div>
 <div><label><input name="mousechan" type="number" value="3"
 min="1" max="16"> Mouse Event Channel</input></label></div>
-<div><label><input name="keychan" type="number" value="4"
+<div><label><input name="keychan" type="number" value="6"
 min="1" max="16"> PC Key Event Channel</input></label></div>
 <div><label><input name="keyalpha" type="number" value="1"
 min="0" max="1" step="any"> Key Alpha (visibility)</input></label></div>
 <div><label><input name="keyshadow" type="checkbox" value="keyshadow"
 defaultChecked="false"> Shadow Overload</input></label></div>
+<div><label><input name="showspect" type="checkbox" value="showspect"
+defaultChecked="false"> Show Spectogram</input></label></div>
 </div>
 <h4>MIDI Channel Colors</h4>
 <div class="ccontainer">
@@ -169,7 +171,10 @@ var midiAccess=null;	// the MIDIAccess object.
 var voice = [];         // tracking of synth voices
 var lfo;                // for tracking synth LFO
 var lfout;              // for drawing LFO data
-var lfdata = new Float32Array(32);
+var lfdata;
+var fftout;             // for drawing FFT data
+var fftdata;
+var mastervol;          // master gain control
 var moddepth = 50;      // mod depth range in cents (midi default 50 cents)
 var modoff = 0;         // fractional note offset for visual modwheel
 var attack=0.01;	// attack speed
@@ -188,6 +193,7 @@ var showflames = false;
 var showfountain = false;
 var showdebug = false;
 var showconfig = true;
+var showspect = false;
 
 var mididata = [];
 var midiinputs = [{ id:null, name:'midi disabled', type:'error' }];
@@ -395,11 +401,12 @@ function makeccolor() {
 makeccolor();
 var touchchan = 1;
 var mousechan = 2;
-var keychan = 3;
+var keychan = 5;
 
 var noteboxes = [];
 var keyboxes = [];
 var particles = [];
+var maxparticles = 2000;
 var gravity = 0.6;
 var midilog = [];  // log for all generated/received events
 var notefrac = 0;  // for tracking pitchbend
@@ -554,6 +561,7 @@ function toggleconfig(event) {
     }
     showfountain = cfgform.showfountain.checked;
     showflames = cfgform.showflames.checked;
+    showspect = cfgform.showspect.checked;
     if (showflames)
       resize();
   }
@@ -1242,9 +1250,17 @@ function initaudio(event) {
   lfout = context.createAnalyser();
   lfout.fftSize = 32;
   lfo.env.connect(lfout);
-  channelgain = context.createGain();
-  channelgain.connect(context.destination);
-  channelgain.gain.value = dbRatio(-10);
+  lfdata = new Float32Array(lfout.frequencyBinCount);
+  mastervol = context.createGain();
+  mastervol.connect(context.destination);
+  mastervol.gain.value = dbRatio(-10);
+  fftout = context.createAnalyser();
+  fftout.fftSize = 256;
+  fftout.minDecibels = -96;
+  fftout.maxDecibels = 0;
+  fftout.smoothingTimeConstant = 0;
+  fftdata = new Uint8Array(fftout.frequencyBinCount);
+  mastervol.connect(fftout);
   for (i = 0; i < maxVoices; i++) {
     // set up the basic oscillator chain, muted to begin with.
     var oscillator = context.createOscillator();
@@ -1252,7 +1268,7 @@ function initaudio(event) {
     oscillator.frequency.value = 0;
     oscillator.connect(envelope);
     lfo.env.connect(oscillator.detune);
-    envelope.connect(channelgain);
+    envelope.connect(mastervol);
     envelope.gain.value = 0.0;  // Mute the sound
     voice.push({
       start: -1,
@@ -1321,16 +1337,13 @@ var tempo = {
   count:0,
 }
 function midimessage(event) {
-  midilog.push({
-    data:event.data,
-    src:event.target.id,
-    time:Math.round(event.timeStamp),  // fraction below ms is broken
+  var now = event.timeStamp;
+  midilog.push({ data:event.data, src:event.target.id, time:now,
   });  // how big can this grow?
   var channel = event.data[0] & 0x0f;
   switch (event.data[0] & 0xf0) {
     case midi_status.SYSTEM_PREFIX:
       if (event.data[0] == midi_sys.TIMING_CLOCK) {
-        var now = event.timeStamp;
         tempo.count++;
         if (now > tempo.last) {
           tempo.ms = now - tempo.last;
@@ -1474,9 +1487,8 @@ ctx.roundRect = function(x,y,w,h,r) {
   ctx.closePath();
 }
 
-var start = 0;
-var last = 0;
-var frame = 0;
+var lasttime = 0;
+var fps = 0;
 var framerate = 1000.0 / 60.0;  // expected update 60fps
 
 var npos = 0;
@@ -1558,11 +1570,20 @@ function Dot(x, y, dx, dy, c) {
     ctx.fillRect(this.x, this.y, 2, 2);
   }
 }
+var splortstart = 0;
+var splortmax = 0.125;
+var sparktime = 0;
 function drawspark(thiskey, ts) {
   var dt = ts - thiskey.ptime;
-  if (dt > 6)
+  var splorttime = ts - splortstart;
+  if (splorttime > 4 && ts - sparktime > 0.125)
+    splortstart = ts;
+  sparktime = ts;
+  if (dt > 6) {
     return;
-  var size = thiskey.w * (9 - dt) / 9;
+  }
+  var smod = (9 - dt) / 9;
+  var size = thiskey.w * smod;
   var x = keypan + thiskey.x + thiskey.w / 2;
   var y = thiskey.y+1;
   var rot = Math.PI/2;
@@ -1579,17 +1600,17 @@ function drawspark(thiskey, ts) {
     var dy = Math.cos(i * dangle + wiggle + rot);
     var r = Math.random() * size/2 + size;
     var v = Math.random() * 6 + 6;
-    v *= (9 - dt)/9;
-    if (showflames) {
-      r *= 0.4;
-    }
     if (i & 1) {
       r *= 0.55;
     } else if (i > points / 2 - 5 && i < points / 2 + 5) {
       // for the five "middle" spark points, shoot particles
-      v *= vmod;
+      v *= vmod * smod;
       var c = v > 11.5 ? '#fff' : thiskey.sfill;
-      if (showfountain) {
+      if (splorttime < splortmax) {
+        dx = Math.sin(2*rot+wiggle);
+        dy = Math.cos(2*rot+wiggle);
+        v += 16;
+      } else if (showfountain) {
         dx = Math.sin(2*rot+fangle+wiggle);
         dy = Math.cos(2*rot+fangle+wiggle);
         v += 10;
@@ -1609,10 +1630,10 @@ function drawspark(thiskey, ts) {
 }
 function drawkeyboard() {
   if (keyshadow) {
-    ctx.save();  // turn off shadows for the particles
-    ctx.shadowColor = 'rgb(0,0,0,1)';
+    ctx.save();
+    ctx.shadowColor = 'rgb(96,96,96,1)';
     ctx.shadowOffsetX = ctx.shadowOffsetY = 2;
-    ctx.shadowBlur = 10;
+    ctx.shadowBlur = 7;
   }
   // draw white keys first
   ctx.strokeStyle = '#000';
@@ -1698,6 +1719,9 @@ function drawkeyboard() {
         keyboxes[i].w, keyboxes[i].h);
     }
     if (keyboxes[i].pressed) {
+      ctx.fillStyle = 'rgba(255,255,255,0.33)';
+      ctx.fillRect(keypan + keyboxes[i].x, keyboxes[i].y,
+        keyboxes[i].w, keyboxes[i].h);
       ctx.fillStyle = keyboxes[i].pfill;
       ctx.fillRect(keypan + keyboxes[i].x, keyboxes[i].y,
         keyboxes[i].w, keyboxes[i].h);
@@ -1740,21 +1764,45 @@ function NoteBox(channel, noteNumber, velocity) {
   }
 }
 
+var fftcount = 0;
+var ffthist = [];
+var ffthistmax = 48;
+function drawfft() {
+  if (showflames) return;
+  fftcount++;
+  if ((fftcount & 1) == 0) {
+    fftout.getByteFrequencyData(fftdata);
+    ffthist.push(new Uint8Array(fftdata));
+    if (ffthist.length > ffthistmax) {
+      ffthist.splice(0, ffthist.length - ffthistmax);
+    }
+  }
+  var len = fftout.frequencyBinCount;
+  var histcount = ffthist.length;
+  var yc = innerHeight - kh - ffthistmax*2 - 2;
+  for (var j = 0; j < histcount; j++) {
+    for (var i = 0; i < len; i++) {
+      var p = ffthist[j][i];
+      if (!p) continue;
+      ctx.fillStyle = 'hsl('+(180-p*360/255)+',100%,50%)';
+      ctx.fillRect(i*2 + j, yc + j*2 - (fftcount&1), 2, -p/25.5);
+    }
+  }
+}
+
 ctx.font = '11px sans-serif';
 function animate(timestamp) {
-  var dt = timestamp - last;
-  if (start <= 0) {
-    start = timestamp;
-    if (canvas.height != innerHeight || canvas.width != innerWidth)
-      resize();  // work around weird bug style recalculation on startup
-  }
+  var dt = timestamp - lasttime;
   requestAnimationFrame(animate);
-  // webkit is missing getFloatTimeDomainData, just use 0 if missing
-  if (lfout && lfout.getFloatTimeDomainData != undefined)
-    lfout.getFloatTimeDomainData(lfdata);
-  modoff = lfdata[0] / 100;
   ctx.clearRect(0, 0, canvas.width, canvas.height);
-
+  // webkit is missing getFloatTimeDomainData, just use 0 if missing
+  if (lfout && lfout.getFloatTimeDomainData != undefined) {
+    lfout.getFloatTimeDomainData(lfdata);
+    if (showspect) {
+      drawfft();
+    }
+  }
+  modoff = lfdata[0] / 100;
   // update particles
   for (var i = 0, j = particles.length; i < j; i++) {
     particles[i].update();
@@ -1764,6 +1812,10 @@ function animate(timestamp) {
     if (particles[i].y >= innerHeight - kh) {
       particles.splice(i, 1);
     }
+  }
+  // delete particles if length grows too far
+  if (particles.length > maxparticles) {
+    particles.splice(0, particles.length - maxparticles);
   }
   if (keyalpha > 0)
     drawkeyboard();
@@ -1806,6 +1858,14 @@ function animate(timestamp) {
   }
   if (showdebug) {
     ctx.fillStyle = '#ffd';
+    if (dt > 0) {
+      var newfps = (1000/dt);
+      if (fps <= 5)
+        fps = newfps;  // seed moving average at startup
+      // calculate weighted moving average fps
+      fps = 0.98 * fps + 0.02 * newfps;
+      ctx.fillText(Math.round(fps) +' fps', 30, 15);
+    }
     var lines = 32;
     for (var i = 1, j = midilog.length; i < lines && j - i >= 0; i++) {
       var d = midilog[j-i].data;
@@ -1829,8 +1889,7 @@ function animate(timestamp) {
     ctx.fillText('Audio context suspended: click or tap ' +
        'play (or here) to start...', 25, 65);
   }
-  last = timestamp;
-  frame += 1;
+  lasttime = timestamp;
 };
 
 //]]>
