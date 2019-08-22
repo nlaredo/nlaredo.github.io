@@ -6,12 +6,14 @@
   <meta name="copyright" content="Nathan Laredo" />
   <meta name="author" content="Nathan Laredo" />
   <style>
-    body,html,canvas { border:0; margin:0; padding:0; overflow:hidden; }
+    body,html,canvas { border:0; margin:0; padding:0; overflow:hidden;
+      font-family:sans-serif; }
     canvas { background:#007; }
     #config {
-      position:fixed; top:75px; right:25px; bottom:25px; left:25px;
+      position:fixed; top:75px; right:25px; left:25px;
       border:3px solid #ccd; background:#00007777; color:#ccd;
       padding:25px; font:1em sans-serif; overflow-y:auto;
+      bottom: 76px;
     }
     .ccontainer {
       display:grid;
@@ -47,6 +49,12 @@
     }
     input[type=file] { width:24em; }
     .active { background:#070; }
+    #transport {
+      position:fixed; bottom:0px; left:0px; right:0px;
+      background:#000; color:#ccd; max-height:128px;
+      min-height:32px;
+    }
+    #transport input { height:32px; width:76px; }
   </style>
 </head>
 <body>
@@ -68,7 +76,7 @@ href="https://www.gnu.org/licenses/">https://www.gnu.org/licenses/</a>.
 <canvas id="keyboard"></canvas>
 <div id="config">
 <h1>PlayMIDI Settings</h1>
-<h4>v20190816 -- Follow development at:
+<h4>v20190821 -- Follow development at:
 <a href="http://twitch.tv/nil4k">twitch.tv/nil4k</a>
 and <a href="http://github.com/nlaredo">GitHub</a>
 and <a href="http://youtube.com/NathanILaredo">YouTube</a></h4>
@@ -96,6 +104,8 @@ min="415.3" max="466.2" step="any"> Master Tuning</input></label></div>
 name="midiin"><option value="none">none</option></select></div>
 <div><span>MIDI out:</span><select
 name="midiout"><option value="none">none</option></select></div>
+<div><span>MIDI ctrl:</span><select
+name="midictrl"><option value="none">none</option></select></div>
 <div><label><input name="bendup" type="number"
 value="2" min="1" max="24"> Pitch Bend Pos</input></label></div>
 <div><label><input name="benddn" type="number"
@@ -112,7 +122,7 @@ min="0" max="1" step="any"> Key Alpha (visibility)</input></label></div>
 defaultChecked="false"> Shadow Overload</input></label></div>
 <div><label><input name="showspect" type="checkbox" value="showspect"
 defaultChecked="false"> Show Spectogram</input></label></div>
-<div><label><input name="psize" type="number" value="1"
+<div><label><input name="psize" type="number" value="3"
 min="1" max="9" step="any"> Particle Size (pixels)</input></label></div>
 </div>
 <h4>MIDI Channel Colors</h4>
@@ -151,12 +161,24 @@ Ch 15</input></label></div>
 Ch 16</input></label></div>
 </div>
 <p><input name="default" type="button" value="Reset Colors"
- onclick="makeccolor()"></p>
+ onclick="makeccolor()" /></p>
 <br><input id="upload" type="file" multiple
 accept=".mid,.kar,.midi" onchange="handlefiles(this.files)" /></br>
 <div id="filequeue"><ul><li>No files queued.</li></ul></div>
 </input>
 </form>
+</div>
+<div id="transport">
+<input name="default" type="button" value="Prev"></input>
+<input name="default" type="button" value="Pause"></input>
+<input name="default" type="button" value="Play"></input>
+<input name="default" type="button" value="Next"></input>
+<input name="default" type="button" value="Loop"></input>
+<input name="default" type="button" value="Loop Start"></input>
+<input name="default" type="button" value="Loop End"></input>
+<input name="default" type="button" value="Tap" id="tap"></input>
+<label>Tempo:<input id="tempo" name="tempo" type="number" value="120"
+min="1" max="500" step="any"></input></label>
 </div>
 <script type="text/javascript">
 //<![CDATA[
@@ -165,6 +187,9 @@ var canvas = document.getElementById("keyboard");
 var config = document.getElementById("config");
 var cfgform = document.forms['cfgform'];
 var filequeue = document.getElementById("filequeue");
+var transport = document.getElementById("transport");
+var settempo = document.getElementById("tempo");
+var taptempo = document.getElementById("tap");
 var filelist = [];
 var ctx = canvas.getContext("2d");
 
@@ -200,8 +225,9 @@ var showspect = false;
 var mididata = [];
 var midiinputs = [{ id:null, name:'midi disabled', type:'error' }];
 var midioutputs = [{ id:null, name:'midi disabled', type:'error' }];
-var midiout = null;  // id of selected device or null for none
-var midiin = null;   // id of selected device or null for none
+var midiout = null;  // id of selected out device or null for none
+var midiin = null;   // id of selected in device or null for none
+var midictrl = null;   // id of selected in device or null for none
 // a bunch of midi constants to avoid magic numbers...
 var smf_meta_events = {
   SEQUENCE_NUMBER:0x00,
@@ -409,7 +435,7 @@ var noteboxes = [];
 var keyboxes = [];
 var particles = [];
 var maxparticles = 2000;
-var psize = 2;
+var psize = 3;
 var gravity = 0.6;
 var midilog = [];  // log for all generated/received events
 var notefrac = 0;  // for tracking pitchbend
@@ -428,6 +454,9 @@ var bw;  // black key width in pixels
 var kh;  // keyboard height in pixels
 var bkh; // black key height in pixels
 var dy;  // pixels to move up per animation frame
+var th = 32;  // transport area height
+var dw = canvas.width;  // drawing area height
+var dh = canvas.height - th;  // drawing area width
 var blackimg = null;
 var whiteimg = null;
 var noiseimg = null;
@@ -534,17 +563,17 @@ function startaudio() {
 function toggleconfig(event) {
   // prevent form submit
   if (event) event.preventDefault();
+  if (context.state == 'suspended') {
+    if (event.type == 'submit' || event.type == 'contextmenu' ||
+      event.type == 'mouseup' || event.type == 'touchend') {
+      // resume audio context on "activation" interaction
+      context.resume().then(startaudio,failaudio);
+    } else
+      return false; // prevent dismiss/submit
+  }
   if (showconfig && !cfgform.checkValidity()) {
     cfgform.reportValidity();
     return false;  // prevent dismiss/submit
-  }
-  if (context.state == 'suspended') {
-    // test "proper" interaction to enable audio before dismiss
-    if (event.type != 'keyup') {
-      context.resume().then(startaudio,failaudio);
-    } else {
-      return false; // prevent dismiss/submit
-    }
   }
   if (showconfig) {
     // validated form user is asking to dismiss
@@ -566,6 +595,9 @@ function toggleconfig(event) {
     showfountain = cfgform.showfountain.checked;
     showflames = cfgform.showflames.checked;
     showspect = cfgform.showspect.checked;
+    midiin = cfgform.midiin.value;
+    midiout = cfgform.midiout.value;
+    midictrl = cfgform.midictrl.value;
     if (showflames)
       resize();
   }
@@ -733,14 +765,20 @@ function resize()
   if (canvas.width != innerWidth) {
     keyscale = 0; // force reset to 88 keys on window resize/rotate
   }
-  canvas.width = innerWidth;
-  canvas.height = innerHeight;
+  // adjust to how browser reflows transport area
+  th = transport.clientHeight;
+  // make config always end 43 pixels above transport area (43+32=75)
+  config.style.bottom = (th + 43) + 'px';
+  dw = window.innerWidth;
+  dh = window.innerHeight - th;
+  canvas.width = dw;
+  canvas.height = dh;
   makekeys();
   if (showflames) {
-    var h = innerHeight - kh - Math.round(2 * keyscale);
-    noiseimg = new ImageData(innerWidth, h);
-    fireimg1 = new ImageData(innerWidth, h);
-    fireimg2 = new ImageData(innerWidth, h);
+    var h = dh - kh - Math.round(2 * keyscale);
+    noiseimg = new ImageData(dw, h);
+    fireimg1 = new ImageData(dw, h);
+    fireimg2 = new ImageData(dw, h);
     makenoiseimage();
   }
 }
@@ -750,16 +788,16 @@ function makekeys()
   if (keyscale <= 0) {
     // on reload, set initial scale to show 88, set keypan to note 21
     keyscale = 128.0 / 88.0;
-    keypan = -21 * innerWidth * keyscale / 128;
+    keypan = -21 * dw * keyscale / 128;
   }
-  var sw = innerWidth * keyscale;
-  var sh = innerHeight * keyscale;
+  var sw = dw * keyscale;
+  var sh = dh * keyscale;
   var kw = sw / (kct * 7 / 12);  // white key width (px)
 
   bw = sw / kct;  // black key width in pixels
   kh = Math.round(keydepth * sw / keybed); // keyboard height (px)
   bkh = Math.round(bkeydepth * sw / keybed); // black height (px)
-  dy =  innerHeight / 256;  // move 1/256 window height per frame
+  dy =  dh / 256;  // move 1/256 window height per frame
   var wpos = 0;
 
   keyboxes = [];
@@ -768,7 +806,7 @@ function makekeys()
     var bk = (n == 1 || n == 3 || n == 6 || n == 8 || n == 10);
     var pnote = (i >= 21 && i <= 108); // is in standard piano range?
     var x = bk ? bw * i : wpos * kw;
-    var y = innerHeight - kh;
+    var y = dh - kh;
     var w = (bk ? bw : kw);
     var h =  (bk ? bkh : kh);
     var fill = (bk ? '#000' : '#fff');
@@ -871,7 +909,7 @@ function mousedown(event) {
     mousenote = -1;
   }
   // ignore if not in keyboard area
-  if (event.y < innerHeight - kh) {
+  if (event.y < dh - kh) {
     // todo: maybe trigger some pointer based effects in scrolly area
     return;
   }
@@ -884,9 +922,9 @@ function mousedown(event) {
 function capkeyscale(scale, ypos)
 {
   // cap scale at y position at ypos or 90% of window height
-  ypos = Math.max(0.1 * innerHeight, ypos);
-  if (scale * kh > innerHeight - ypos - 25) {
-    scale = (innerHeight - ypos - 25) / kh;
+  ypos = Math.max(0.1 * dh, ypos);
+  if (scale * kh > dh - ypos - 25) {
+    scale = (dh - ypos - 25) / kh;
   }
   if (scale * keyscale < 1.0) {
     scale = 1.0 / keyscale;
@@ -898,8 +936,8 @@ function updatekeypan(oldx, scale, x)
   keypan -= oldx;
   keypan *= scale;
   keypan += x;
-  if (keypan < innerWidth - 128 * bw * scale)
-    keypan = innerWidth - 128 * bw * scale;
+  if (keypan < dw - 128 * bw * scale)
+    keypan = dw - 128 * bw * scale;
   if (keypan > 0)
     keypan = 0;
 }
@@ -937,7 +975,7 @@ function handletouch(event) {
       toggleconfig(event);
       return;
     }
-    if (event.touches[0].clientY < innerHeight - kh - 2) {
+    if (event.touches[0].clientY < dh - kh - 2) {
       // have a single touch above the kbd, track for 1 touch kbd panning
       var x = event.touches[0].clientX;
       if (oldx >= 0) {
@@ -950,7 +988,7 @@ function handletouch(event) {
   }
   oldx = -1;
   if (count == 2) {
-    var kbd = innerHeight - kh - 2;
+    var kbd = dh - kh - 2;
     if (event.touches[0].clientY < kbd && event.touches[1].clientY < kbd) {
       // allow two touch keyboard scale and pan
       var x1 = event.touches[0].clientX;
@@ -1289,13 +1327,17 @@ function initaudio(event) {
 function selectmidi() {
   cfgform.midiin.options.length = 0;
   cfgform.midiout.options.length = 0;
+  cfgform.midictrl.options.length = 0;
   midiinputs.forEach(function(input) {
     if (midiin == null && input.id != 'none') {
       midiin = input.id;
     }
     var sel = (midiin == input.id);
+    var csel = (midictrl == input.id);
     cfgform.midiin.options.add(new Option(input.id + " - " +
       input.name, input.id, sel, sel));
+    cfgform.midictrl.options.add(new Option(input.id + " - " +
+      input.name, input.id, csel, csel));
   });
   midioutputs.forEach(function(output) {
     var sel = (midiout == output.id);
@@ -1305,7 +1347,8 @@ function selectmidi() {
 }
 function connectMIDI() {
   midiinputs = [];
-  midiinputs.push({ id:'none', name:'none', type:'input' });
+  midiinputs.push({ id:'none', name:'disabled', type:'input' });
+  midiinputs.push({ id:'all', name:'enabled', type:'input' });
   midiAccess.inputs.forEach(function(input) {
     input.onmidimessage = midimessage;
     midiinputs.push({
@@ -1315,7 +1358,7 @@ function connectMIDI() {
     });
   });
   midioutputs = [];
-  midioutputs.push({ id:'none', name:'none', type:'output' });
+  midioutputs.push({ id:'none', name:'disabled', type:'output' });
   midiAccess.outputs.forEach(function(output) {
     midioutputs.push({
       id: output.id,
@@ -1331,7 +1374,7 @@ function gotMIDI(midi) {
   midiAccess.onstatechange=connectMIDI;
 }
 function deniedMIDI(err) {
-  midiout = midiin = null;
+  midiout = midiin = midictrl = null;
 }
 var tempo = {
   val:0,
@@ -1340,15 +1383,27 @@ var tempo = {
   avgms:0,
   ms:0,
   count:0,
+  beats:0,
 }
 function midimessage(event) {
-  var now = event.timeStamp;
+  if (midiin != 'all' && event.target.id != midiin)
+    return;  // if user selected a device, ignore all the rest
+  var now = Math.floor(event.timeStamp);  // no data in fractional part
   midilog.push({ data:event.data, src:event.target.id, time:now,
   });  // how big can this grow?
   var channel = event.data[0] & 0x0f;
   switch (event.data[0] & 0xf0) {
     case midi_status.SYSTEM_PREFIX:
+      if (event.data[0] == midi_sys.START) {
+        tempo.beats = 0;
+      }
       if (event.data[0] == midi_sys.TIMING_CLOCK) {
+        if  (tempo.beats % 24 < 12) {
+          taptempo.style.background="#ff0";
+        } else {
+          taptempo.style.background="";
+        }
+        tempo.beats++;
         tempo.count++;
         if (now > tempo.last) {
           tempo.ms = now - tempo.last;
@@ -1472,8 +1527,8 @@ ctx.roundRect = function(x,y,w,h,r) {
     r = w / 2;
   var r2 = r;
   // square off tops and bottoms when they hit edges
-  if ((1+innerHeight-kh)-(y+h) < r) {
-    r2 = (1+innerHeight-kh)-(y+h);
+  if ((1+dh-kh)-(y+h) < r) {
+    r2 = (1+dh-kh)-(y+h);
     if (r2 < 1)
       r2 = 0;
   }
@@ -1701,8 +1756,7 @@ function makenoiseimage() {
 function noteseed() {
   var w = fireimg1.width;
   var h = fireimg1.height;
-  var seed = ctx.getImageData(0, 0,
-    innerWidth, innerHeight - kh - 2);
+  var seed = ctx.getImageData(0, 0, dw, dh - kh - 2);
   var offset = (h - h) * w * 4;
   for (var i = 0, j = seed.data.length; i < j; i += 4) {
     if (seed.data[i] > 0 || seed.data[i + 1] > 0 ||
@@ -1722,7 +1776,7 @@ function Dot(x, y, dx, dy, c) {
     this.x += this.dx;
     this.y += this.dy;
     this.dy += gravity;
-    if (this.y > innerHeight - kh - 2) {
+    if (this.y > dh - kh - 2) {
       this.dx = this.dy = 0;
     }
     ctx.fillStyle = this.c;
@@ -1912,9 +1966,9 @@ function NoteBox(channel, noteNumber, velocity) {
     this.y -= dy * dt / framerate;
     if (this.playing == true) {
       this.h += dy * dt / framerate;
-      if (this.h > innerHeight - kh) {
+      if (this.h > dh - kh) {
         // clip tall notes to viewing area
-        this.h = innerHeight - kh;
+        this.h = dh - kh;
         this.y = 0;
       }
     }
@@ -1941,7 +1995,7 @@ function drawfft() {
   }
   var len = fftout.frequencyBinCount;
   var histcount = ffthist.length;
-  var yc = innerHeight - kh - ffthistmax*2 - 2;
+  var yc = dh - kh - ffthistmax*2 - 2;
   for (var j = 0; j < histcount; j++) {
     for (var i = 0; i < len; i++) {
       var p = ffthist[j][i];
@@ -1971,7 +2025,7 @@ function animate(timestamp) {
   }
   // delete particles that fall off screen
   for (var i = particles.length - 1; i >= 0; i--) {
-    if (particles[i].y > innerHeight - kh - 2) {
+    if (particles[i].y > dh - kh - 2) {
       particles.splice(i, 1);
     }
   }
@@ -1993,13 +2047,12 @@ function animate(timestamp) {
   ctx.beginPath();  // seems required to stop artifact
   // draw red line at the top of keys
   ctx.fillStyle = '#f00';
-  ctx.fillRect(0, innerHeight - kh - 2*keyscale,
-    innerWidth, 1+2*keyscale);
+  ctx.fillRect(0, dh - kh - 2*keyscale, dw, 1+2*keyscale);
 
   // draw sparks for all notes pressed or held
   for (var i = 0; i < kct; i++) {
     if ((keyboxes[i].x + keyboxes[i].w + keypan < 0) ||
-      (keyboxes[i].x + keypan > innerWidth)) {
+      (keyboxes[i].x + keypan > dw)) {
       continue;  // skip keys outside view
     }
     if (keyboxes[i].pressed || keyboxes[i].held ||
@@ -2042,9 +2095,7 @@ function animate(timestamp) {
     }
   }
   if (tempo.val > 0) {
-    ctx.fillStyle = '#fff';
-    ctx.fillText('Tempo = ' + tempo.val + ' bpm  count=' +
-      Math.floor(tempo.count / 24), 25, 40);
+    settempo.value = tempo.val;
   }
   if (context.state == 'suspended') {
     ctx.fillStyle = '#fff';
