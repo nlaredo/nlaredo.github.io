@@ -1515,8 +1515,8 @@ function noteOn(channel, noteNumber, velocity) {
     keyboxes[noteNumber].v = velocity;
     keyboxes[noteNumber].ptime = context.currentTime;
     keyboxes[noteNumber].pressed = true;
-    keyboxes[noteNumber].pfill = ccolor[channel] + '33';
-    keyboxes[noteNumber].sfill = ccolor[channel] + 'ff';
+    keyboxes[noteNumber].pfill = ccolor[channel] + '55';
+    keyboxes[noteNumber].sfill = ccolor[channel];
   }
   notecounter[channel] += 1;
   if (counterbase <= 0) {  // baseline after reset on first midi note
