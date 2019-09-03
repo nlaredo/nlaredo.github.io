@@ -23,7 +23,7 @@
     }
     .container2 {
       display:grid;
-      grid-template-rows: repeat(10, 2em);
+      grid-template-rows: repeat(11, 2em);
       grid-template-columns: repeat(2, 1fr);
       grid-auto-flow: column;
     }
@@ -98,6 +98,10 @@ value="showfountain"> Bellagio Fountain</input></label></div>
 Show Debug Info</input></label></div>
 <div><label><input name="showoctaves" type="checkbox" value="showoctaves"
 defaultChecked="false"> Show Octave Lines</input></label></div>
+<div><label><input name="showstats" type="checkbox" value="showstats"
+defaultChecked="false"> Show Stats</input></label>
+<input name="reset" type="button" value="Reset Stats"
+onclick="resetstats()" /></div>
 <div><label><input name="mastertune" type="number" value="440"
 min="415.3" max="466.2" step="any"> Master Tuning</input></label></div>
 <div><span>MIDI in:</span><select
@@ -111,7 +115,7 @@ value="50" min="0" max="200"> Mod Depth (cents)</input></label></div>
 <div><label><input name="bendup" type="number"
 value="2" min="1" max="24"> Pitch Bend Pos</input></label></div>
 <div><label><input name="benddn" type="number"
-value="-12" min="-24" max="-1"> Pitch Bend Neg</input></label></div>
+value="-2" min="-24" max="-1"> Pitch Bend Neg</input></label></div>
 <div><label><input name="touchchan" type="number" value="2"
 min="1" max="16"> Touch Event Channel</input></label></div>
 <div><label><input name="mousechan" type="number" value="3"
@@ -126,7 +130,7 @@ defaultChecked="false"> Shadow Overload</input></label></div>
 defaultChecked="false"> Show Spectogram</input></label></div>
 <div><label><input name="psize" type="number" value="3"
 min="1" max="9" step="any"> Particle Size (pixels)</input></label></div>
-<div><label><input name="maxparticles" type="number" value="2000"
+<div><label><input name="maxparticles" type="number" value="1000"
 min="1" max="10000" step="any"> Maximum Particle Count</input></label></div>
 </div>
 <h4>MIDI Channel Colors</h4>
@@ -225,6 +229,15 @@ var showfountain = false;
 var showdebug = false;
 var showconfig = true;
 var showspect = false;
+var showstats = false;
+
+var notecounter;  // keep statistics per channel for visual stats
+var counterbase;  // keep track of when statistics were started
+function resetstats() {
+  counterbase = 0; // start time for notes per second calculation
+  notecounter = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0];  // per channel
+}
+resetstats();
 
 var mididata = [];
 var midiinputs = [{ id:null, name:'midi disabled', type:'error' }];
@@ -438,14 +451,14 @@ var keychan = 5;
 var noteboxes = [];
 var keyboxes = [];
 var particles = [];
-var maxparticles = 2000;
+var maxparticles = 1000;
 var psize = 3;
 var gravity = 0.6;
 var midilog = [];  // log for all generated/received events
 var notefrac = 0;  // for tracking pitchbend
 var bendmult = 1;  // for playing pitchbend
 var bendup = 2;  // pitchbend range in semitones
-var benddn = 12;  // pitchbend range in semitones
+var benddn = 2;  // pitchbend range in semitones
 var keybed = 69.81818182; // 128 key full size midi keyboard in inches
 var keydepth = 6; // depth in inches, always 6 for full size keys
 var bkeydepth = 3.5; // black key depth in inches, 3.5 for full size keys
@@ -584,6 +597,7 @@ function toggleconfig(event) {
     setSound(cfgform.soundon.checked);
     showdebug = cfgform.showdebug.checked;
     showoctaves = cfgform.showoctaves.checked;
+    showstats = cfgform.showstats.checked;
     mastertune = cfgform.mastertune.value;
     moddepth = cfgform.moddepth.value;
     benddn = -cfgform.benddn.value;
@@ -1370,6 +1384,7 @@ function connectMIDI() {
       id: output.id,
       name: output.name,
       type: output.type,
+      out: output,
     });
   });
   selectmidi();  // update possible midi selections
@@ -1502,6 +1517,10 @@ function noteOn(channel, noteNumber, velocity) {
     keyboxes[noteNumber].pressed = true;
     keyboxes[noteNumber].pfill = ccolor[channel] + '33';
     keyboxes[noteNumber].sfill = ccolor[channel] + 'ff';
+  }
+  notecounter[channel] += 1;
+  if (counterbase <= 0) {  // baseline after reset on first midi note
+    counterbase = context.currentTime;
   }
   if (soundon) {
     startNote(channel, noteNumber, velocity);
@@ -2087,7 +2106,7 @@ function animate(timestamp) {
       fps = 0.98 * fps + 0.02 * newfps;
       ctx.fillText(Math.round(fps) +' fps', 30, 15);
     }
-    var lines = 32;
+    var lines = 10;
     for (var i = 1, j = midilog.length; i < lines && j - i >= 0; i++) {
       var d = midilog[j-i].data;
       var s = midilog[j-i].src;
@@ -2098,6 +2117,18 @@ function animate(timestamp) {
         hexmidi += ' ' + (b + 256).toString(16).substr(-2);
       });
       ctx.fillText(j-i + ': ' + s + ' ' +  t + ' ' + hexmidi, 30, y);
+    }
+  }
+  if (showstats) {
+    var dt = context.currentTime - counterbase;
+    var xsplit = dw / 18;
+    for (var i = 0; i < 16; i++) {
+      if (notecounter[i] > 0) {
+        ctx.fillStyle = ccolor[i];
+        ctx.fillText(notecounter[i], xsplit * (i + 1), 30);
+        ctx.fillText((notecounter[i] / dt).toFixed(2) + ' nps',
+                xsplit * (i + 1), 45);
+      }
     }
   }
   if (tempo.val > 0) {
