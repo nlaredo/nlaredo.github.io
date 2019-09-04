@@ -76,10 +76,10 @@ href="https://www.gnu.org/licenses/">https://www.gnu.org/licenses/</a>.
 <canvas id="keyboard"></canvas>
 <div id="config">
 <h1>PlayMIDI Settings</h1>
-<h4>v20190902 -- Follow development at:
+<h2>v20190903 - Follow development at:
 <a href="http://twitch.tv/nil4k">twitch.tv/nil4k</a>
 and <a href="http://github.com/nlaredo">GitHub</a>
-and <a href="http://youtube.com/NathanILaredo">YouTube</a></h4>
+and <a href="http://youtube.com/NathanILaredo">YouTube</a></h2>
 <p>Tap or click the area above this window to open this config window
 while playing...</p>
 <p>Play multiple midi files by drag &amp; drop
@@ -89,7 +89,13 @@ the settings.</p>
 <p><input type="submit" value="Dismiss"></p>
 <div class="container2">
 <div><label><input name="soundon" type="checkbox" value="soundon"
-checked> Generate Sounds</input></label></div>
+checked> Sounds</input></label>
+<select name="waveform" style="width:auto">
+<option value="sine">sine</option>
+<option value="square" selected="selected">square</option>
+<option value="sawtooth">sawtooth</option>
+<option value="triangle">triangle</option>
+</select></div>
 <div><label><input name="showflames" type="checkbox" value="showflames">
 Generate Flames</input></label></div>
 <div><label><input name="showfountain" type="checkbox"
@@ -230,6 +236,7 @@ var showdebug = false;
 var showconfig = true;
 var showspect = false;
 var showstats = false;
+var waveform = 'square';
 
 var notecounter;  // keep statistics per channel for visual stats
 var counterbase;  // keep track of when statistics were started
@@ -595,6 +602,7 @@ function toggleconfig(event) {
   if (showconfig) {
     // validated form user is asking to dismiss
     setSound(cfgform.soundon.checked);
+    waveform = cfgform.waveform.value;
     showdebug = cfgform.showdebug.checked;
     showoctaves = cfgform.showoctaves.checked;
     showstats = cfgform.showstats.checked;
@@ -738,7 +746,7 @@ function startNote(channel, note, velocity) {
   voice[i].hold1 = false;
   voice[i].sostenuto = false;
   voice[i].osc.frequency.setValueAtTime(voice[i].freq * bendmult, 0);
-  voice[i].osc.type = 'square';
+  voice[i].osc.type = waveform;
   if (voice[i].start < 0)
     voice[i].osc.start();
   voice[i].start = context.currentTime;
