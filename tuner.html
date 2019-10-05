@@ -1,0 +1,179 @@
+<!doctype html>
+<html>
+<head>
+  <title>Web Audio Tuner</title>
+  <meta charset=utf-8 />
+  <meta name="copyright" content="Nathan Laredo" />
+  <meta name="author" content="Nathan Laredo" />
+  <style>
+    body,html,canvas { border:0; margin:0; padding:0; overflow:hidden;
+      font-family:sans-serif; }
+    canvas { background:#007; }
+    #config {
+      position:fixed; top:75px; right:25px; left:25px;
+      border:3px solid #ccd; background:#00007777; color:#ccd;
+      padding:25px; font:1em sans-serif; overflow-y:auto;
+      bottom: 76px;
+    }
+    .ccontainer {
+      display:grid;
+      grid-template-rows: repeat(4, 2em);
+      grid-template-columns: repeat(4, 1fr);
+      grid-auto-flow: column;
+    }
+    .container2 {
+      display:grid;
+      grid-template-rows: repeat(11, 2em);
+      grid-template-columns: repeat(2, 1fr);
+      grid-auto-flow: column;
+    }
+    li { padding:2px; }
+    li:nth-child(even) { background:#0007; }
+    a { text-decoration:none }
+    a:link { color:#ff4; }
+    a:visited { color:#f44; }
+    a:hover { text-decoration:underline; }
+    a:active { background:#f44; color:#ffe; }
+    h1,h2,h3,h4,p { text-align: center }
+    input { width:4em; }
+    span { display:inline-block; width:5em; }
+    select { width:11em; }
+    label,input { margin:1px; }
+    #license { position:fixed; top:75px; left:25px;
+      color:#00f; padding:25px; }
+    #license a { color:#00f; }
+    .ccontainer div { margin:auto; width:8em; padding:1px; }
+    .container2 div { margin:auto; width:16em; padding:1px; }
+    input[type=button],input[type=submit] {
+      background: #ccd; width:8em; height:2em;
+    }
+    input[type=file] { width:24em; }
+    .active { background:#070; }
+    #transport {
+      position:fixed; bottom:0px; left:0px; right:0px;
+      background:#000; color:#ccd; max-height:128px;
+      min-height:32px;
+    }
+    #transport input { height:32px; width:76px; }
+  </style>
+</head>
+<body>
+<pre id="license">
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <a
+href="https://www.gnu.org/licenses/">https://www.gnu.org/licenses/</a>.
+</pre>
+<canvas id="tuner"></canvas>
+<script type="text/javascript">
+//<![CDATA[
+var license = document.getElementById("license");
+var canvas = document.getElementById("tuner");
+var ctx = canvas.getContext("2d");
+ctx.font = '11px sans-serif';
+window.addEventListener('mousedown', mousedown);
+window.addEventListener('resize', resize, false);
+
+var context=null;	// the Web Audio "context" object
+var audioenabled = false;
+var fftout=null;
+var fftdata;
+var showerror = null;
+var yc = 0;
+var fftlen = 0;
+
+resize();
+initaudio();
+requestAnimationFrame(animate);
+function resize(event) {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+  yc = window.innerHeight / 2;
+}
+
+function getUserMedia(dict, callback) {
+  try {
+    navigator.getUserMedia = navigator.getUserMedia ||
+      navigator.webkitGetUserMedia || navigator.mozGetUserMedia;
+    navigator.getUserMedia(dict, callback, failaudio);
+  } catch (err) {
+    showerror = 'getUserMedia exception: ' + err;
+  }
+}
+function startaudio(event) {
+  getUserMedia( { "audio": { "mandatory": {
+    "googEchoCancellation": "false",
+    "googAutoGainControl": "true",
+    "googNoiseSuppression": "false",
+    "googHighpassFilter": "false" }, "optional": [] }, }, gotInput);
+}
+function failaudio(event) {
+  audioenabled = false;
+}
+function gotInput(stream) {
+  inputSource = context.createMediaStreamSource(stream);
+  inputSource.connect(fftout);
+  audioenabled = true;
+}
+function mousedown(event) {
+  license.style.display = 'none';
+  if (context.state == 'suspended') {
+    // resume audio context on "activation" interaction
+    context.resume().then(startaudio,failaudio);
+  }
+}
+function initaudio(event) {
+  // patch up prefixes
+  window.AudioContext=window.AudioContext||window.webkitAudioContext;
+  context = new AudioContext();
+
+  fftout = context.createAnalyser();
+  fftout.fftSize = 4096;
+  fftout.minDecibels = -96;
+  fftout.maxDecibels = 0;
+  fftout.smoothingTimeConstant = 0;
+  fftlen = fftout.frequencyBinCount;
+  fftdata = new Float32Array(fftlen);
+}
+
+var lasttime = 0;
+
+function animate(timestamp) {
+  var dt = timestamp - lasttime;
+  requestAnimationFrame(animate);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  if (showerror) {
+    ctx.fillStyle = '#fff';
+    ctx.fillText(showerror, 25, 45);
+  }
+  if (context.state == 'suspended') {
+    ctx.fillStyle = '#fff';
+    ctx.fillText('Audio context suspended: click or tap ' +
+       'to start...', 25, 65);
+  }
+  lasttime = timestamp;
+  if (audioenabled) {
+    fftout.getFloatFrequencyData(fftdata);
+    ctx.beginPath();
+    ctx.moveTo(0, yc - fftdata[0]);
+    for (var i=1; i < fftlen; i++) {
+      ctx.lineTo(i, yc - fftdata[i]);
+    }
+    ctx.strokeStyle = "#fff";
+    ctx.stroke();
+  }
+};
+
+//]]>
+</script>
+</body>
+</html>
