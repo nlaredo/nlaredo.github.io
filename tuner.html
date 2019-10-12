@@ -89,6 +89,7 @@ var fftout=null;
 var fftdata;
 var showerror = null;
 var yc = 0;
+var xw = 0;
 var fftlen = 0;
 
 resize();
@@ -98,6 +99,7 @@ function resize(event) {
   canvas.width = window.innerWidth;
   canvas.height = window.innerHeight;
   yc = window.innerHeight / 2;
+  xw = window.innerWidth;
 }
 
 function getUserMedia(dict, callback) {
@@ -137,7 +139,7 @@ function initaudio(event) {
   context = new AudioContext();
 
   fftout = context.createAnalyser();
-  fftout.fftSize = 4096;
+  fftout.fftSize = 16384;
   fftout.minDecibels = -96;
   fftout.maxDecibels = 0;
   fftout.smoothingTimeConstant = 0;
@@ -163,13 +165,16 @@ function animate(timestamp) {
   lasttime = timestamp;
   if (audioenabled) {
     fftout.getFloatFrequencyData(fftdata);
-    ctx.beginPath();
-    ctx.moveTo(0, yc - fftdata[0]);
-    for (var i=1; i < fftlen; i++) {
-      ctx.lineTo(i, yc - fftdata[i]);
+    let xs = xw / (fftlen/8);
+    for (var row=0; row < 8; row++) {
+      ctx.beginPath();
+      ctx.moveTo(0, (yc/8) * (row+1) - fftdata[row * (fftlen/8)]+96);
+      for (var i=1; i < fftlen/8; i++) {
+        ctx.lineTo(i * xs, (yc/8)*(row+1) - fftdata[i + row * (fftlen/8)]+96);
+      }
+      ctx.strokeStyle = "#fff";
+      ctx.stroke();
     }
-    ctx.strokeStyle = "#fff";
-    ctx.stroke();
   }
 };
 
