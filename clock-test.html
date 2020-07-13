@@ -1,6 +1,7 @@
 <html>
  <head>
   <title>Clock Test</title>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Fredericka+the+Great">
   <style>
    body { border:0; margin: 0; }
    canvas { border: 0; margin:0; background:#007; }
@@ -19,13 +20,13 @@
     function makeClocks() {
 	clocks =[];
 	var r = 75;
-	var space = 3 * r;
+	var space = 2.5 * r;
 	var hcnt = Math.floor(canvas.width / space);
 	var vcnt = Math.floor(canvas.height / space);
 	for (var i = 0; i < hcnt * vcnt; i++) {
 	    var x = (space / 2) + space * (i % hcnt);
 	    var y = (space / 2) + space * Math.floor(i / hcnt);
-	    var m = (i + 1) * (i + 1);
+	    var m = 1 + 27 * i;
 	    if (i & 1)
 		m = -m;
 	    clocks.push(new Clock(x, y, r, m));
@@ -42,8 +43,7 @@
 			    makeClocks();}
     );
 
-    function drawTime(cx, cy, radius, m) {
-	var now = new Date();
+    function drawTime(cx, cy, radius, m, now) {
 	var hour = now.getHours() % 12;
 	var minute = now.getMinutes();
 	var second = now.getSeconds() + now.getMilliseconds() / 1000.0;
@@ -51,9 +51,29 @@
 	hour = hour * 30 + (minute + second / 60) / 2;
 	minute = 6 * (minute + second / 60);
 	second = 6 * second;
-	drawHand(cx, cy, hour * m, radius * 0.5, radius * 0.07);
-	drawHand(cx, cy, minute * m, radius * 0.8, radius * 0.07);
-	drawHand(cx, cy, second * m, radius * 0.9, radius * 0.02);
+	var hh = (hour * m) % 360;
+	var hm = (minute * m) % 360;
+	var hs = (second * m) % 360;
+	if (m < 0) {
+	  hh = 360 + hh;
+	}
+	// hour within 7.5 degrees = +/- 15 minutes
+	var hdiff = Math.abs(hour - hh);
+        if (hdiff > 20) {
+	    ctx.strokeStyle = '#0ff';
+	} else {
+	    var b = 255 * (hdiff / 20);
+	    var r = 255 - b;
+	    var g = b;
+	    if (hdiff <= 3.75) {
+		hdiff /= 3.75;
+		g = b * hdiff + r * (1 - hdiff);
+	    }
+	    ctx.strokeStyle = 'rgb(' + r + ',' + g + ',' + b + ')';
+	}
+	drawHand(cx, cy, hh, radius * 0.5, radius * 0.07);
+	drawHand(cx, cy, hm, radius * 0.8, radius * 0.07);
+	drawHand(cx, cy, hs, radius * 0.9, radius * 0.02);
     }
 
     function drawHand(cx, cy, ang, length, width) {
@@ -62,33 +82,10 @@
 	var y = Math.cos(ang) * length;
 	ctx.beginPath();
 	ctx.lineWidth = width;
-	ctx.moveTo(cx, cy);
+	ctx.moveTo(cx - 0.1 * x, cy - 0.1 * y);
 	ctx.lineTo(cx + x, cy + y);
 	ctx.lineCap = 'round';
 	ctx.stroke();
-    }
-
-    function drawNumbers(cx, cy, radius) {
-	var ang;
-	var num;
-	ctx.font = radius * 0.15 + 'px arial';
-	ctx.textBaseline = 'middle';
-	ctx.textAlign = 'center';
-	for (num = 1; num < 13; num++) {
-	    ang = Math.PI - num * Math.PI / 6;
-	    var x = Math.sin(ang) * radius * 0.85;
-	    var y = Math.cos(ang) * radius * 0.85;
-	    ctx.fillText(num.toString(), cx + x, cy + y);
-	}
-    }
-
-
-    function drawClock(cx, cy, r, m) {
-	radius = r;
-	ctx.fillStyle = '#fff';
-	ctx.strokeStyle = '#0ff';
-	drawNumbers(cx, cy, radius);
-	drawTime(cx, cy, radius, m);
     }
 
     function Clock(x, y, r, m) {
@@ -96,8 +93,18 @@
 	this.y = y;
 	this.r = r;
 	this.m = m;
-	this.draw = function() {
-	    drawClock(x, y, r, m);
+	this.draw = function(now) {
+	    ctx.fillStyle = '#88f';
+	    ctx.font = this.r * 0.3 + 'px Fredericka the Great';
+	    ctx.textBaseline = 'middle';
+	    ctx.textAlign = 'center';
+	    for (var num = 1; num < 13; num++) {
+	        var ang = Math.PI - num * Math.PI / 6;
+	        var x = Math.sin(ang) * this.r * 0.75;
+	        var y = Math.cos(ang) * this.r * 0.75;
+	        ctx.fillText(num.toString(), this.x + x, this.y + y);
+	    }
+	    drawTime(this.x, this.y, this.r, this.m, now);
 	}
     }
 
@@ -122,11 +129,13 @@
 	ctx.clearRect(0, 0, innerWidth, innerHeight);
 	if (fps > 0) {
 	    ctx.textAlign = 'left';
+	    ctx.textBaseline = 'bottom';
 	    ctx.fillStyle = '#fff';
-	    ctx.fillText(fps + ' fps', 30, 30);
+	    ctx.fillText(fps.toFixed(4) + ' fps', 0, innerHeight);
 	}
+	var now = new Date();
 	for (var i = 0; i < clocks.length; i++) {
-	    clocks[i].draw();
+	    clocks[i].draw(now);
 	}
 	requestAnimationFrame(animate);
     }
