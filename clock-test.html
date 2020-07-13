@@ -1,0 +1,136 @@
+<html>
+ <head>
+  <title>Clock Test</title>
+  <style>
+   body { border:0; margin: 0; }
+   canvas { border: 0; margin:0; background:#007; }
+  </style>
+ </head>
+<body>
+ <canvas id='mycanvas'>
+ </canvas>
+ <script>
+    var canvas = document.querySelector('canvas');
+    var ctx = canvas.getContext('2d');
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+
+    var clocks =[];
+    function makeClocks() {
+	clocks =[];
+	var r = 75;
+	var space = 3 * r;
+	var hcnt = Math.floor(canvas.width / space);
+	var vcnt = Math.floor(canvas.height / space);
+	for (var i = 0; i < hcnt * vcnt; i++) {
+	    var x = (space / 2) + space * (i % hcnt);
+	    var y = (space / 2) + space * Math.floor(i / hcnt);
+	    var m = (i + 1) * (i + 1);
+	    if (i & 1)
+		m = -m;
+	    clocks.push(new Clock(x, y, r, m));
+	}
+    }
+
+    window.addEventListener('resize', function(event) {
+			    var oldwidth = canvas.width;
+			    var oldheight = canvas.height;
+			    canvas.width = window.innerWidth;
+			    canvas.height = window.innerHeight;
+			    oldwidth = canvas.width / oldwidth;
+			    oldheight = canvas.height / oldheight;
+			    makeClocks();}
+    );
+
+    function drawTime(cx, cy, radius, m) {
+	var now = new Date();
+	var hour = now.getHours() % 12;
+	var minute = now.getMinutes();
+	var second = now.getSeconds() + now.getMilliseconds() / 1000.0;
+	// angle in degrees
+	hour = hour * 30 + (minute + second / 60) / 2;
+	minute = 6 * (minute + second / 60);
+	second = 6 * second;
+	drawHand(cx, cy, hour * m, radius * 0.5, radius * 0.07);
+	drawHand(cx, cy, minute * m, radius * 0.8, radius * 0.07);
+	drawHand(cx, cy, second * m, radius * 0.9, radius * 0.02);
+    }
+
+    function drawHand(cx, cy, ang, length, width) {
+	ang = Math.PI - ang * Math.PI / 180;
+	var x = Math.sin(ang) * length;
+	var y = Math.cos(ang) * length;
+	ctx.beginPath();
+	ctx.lineWidth = width;
+	ctx.moveTo(cx, cy);
+	ctx.lineTo(cx + x, cy + y);
+	ctx.lineCap = 'round';
+	ctx.stroke();
+    }
+
+    function drawNumbers(cx, cy, radius) {
+	var ang;
+	var num;
+	ctx.font = radius * 0.15 + 'px arial';
+	ctx.textBaseline = 'middle';
+	ctx.textAlign = 'center';
+	for (num = 1; num < 13; num++) {
+	    ang = Math.PI - num * Math.PI / 6;
+	    var x = Math.sin(ang) * radius * 0.85;
+	    var y = Math.cos(ang) * radius * 0.85;
+	    ctx.fillText(num.toString(), cx + x, cy + y);
+	}
+    }
+
+
+    function drawClock(cx, cy, r, m) {
+	radius = r;
+	ctx.fillStyle = '#fff';
+	ctx.strokeStyle = '#0ff';
+	drawNumbers(cx, cy, radius);
+	drawTime(cx, cy, radius, m);
+    }
+
+    function Clock(x, y, r, m) {
+	this.x = x;
+	this.y = y;
+	this.r = r;
+	this.m = m;
+	this.draw = function() {
+	    drawClock(x, y, r, m);
+	}
+    }
+
+    var frame = 0;
+    var start = -1;
+    var lasttime = 0;
+    var fps = 0;
+    makeClocks();
+
+    function animate(timestamp) {
+	var dt = timestamp - lasttime;
+	lasttime = timestamp;
+	if (start < 0)
+	    start = timestamp;
+	var runtime = timestamp - start;
+	if (runtime > 1000) {
+	    fps = 1000 * frame / runtime;
+	    frame = 0;
+	    start += runtime;
+	}
+	frame += 1;
+	ctx.clearRect(0, 0, innerWidth, innerHeight);
+	if (fps > 0) {
+	    ctx.textAlign = 'left';
+	    ctx.fillStyle = '#fff';
+	    ctx.fillText(fps + ' fps', 30, 30);
+	}
+	for (var i = 0; i < clocks.length; i++) {
+	    clocks[i].draw();
+	}
+	requestAnimationFrame(animate);
+    }
+    requestAnimationFrame(animate);
+ </script>
+</body>
+</html>
