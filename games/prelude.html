@@ -14875,7 +14875,7 @@ var lvl = [
 
     function kbdEvent(event) {
       if (!soundon) resumeAudio(event);
-      playing = true;
+      soundon = playing = true;
       if (event.code == 'ArrowLeft' || event.code == 'A') {
         player.left();
       }
@@ -14888,7 +14888,7 @@ var lvl = [
     }
     function mouseEvent(event) {
       if (!soundon) resumeAudio(event);
-      playing = true;
+      soundon = playing = true;
     }
     function animate(timestamp) {
 	ctx.clearRect(0, 0, canvas.width, canvas.height);
