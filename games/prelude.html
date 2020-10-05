@@ -14624,7 +14624,7 @@ var lvl = [
     var canvas = document.querySelector('canvas');
     var ctx = canvas.getContext('2d');
     var dpx, dpy;
-    var gravity = 5;
+    var gravity = 20;
 
     function failaudio() { soundon = false; }
     function startaudio() { soundon = true; }
@@ -14720,6 +14720,12 @@ var lvl = [
         voice[i].env.gain.setTargetAtTime(0.0, 0, release);
       }
     }
+    function killNotes() {
+      for (var i = 0; i < maxVoices; i++) {
+        voice[i].env.gain.cancelScheduledValues(0);
+        voice[i].env.gain.setTargetAtTime(0.0, 0, release);
+      }
+    }
 
     function dbRatio(dB) {
       if (dB < 0)
@@ -14735,7 +14741,7 @@ var lvl = [
       mastervol = context.createGain();
       mastervol.connect(context.destination);
       mastervol.gain.value = dbRatio(-10);
-      for (i = 0; i < maxVoices; i++) {
+      for (var i = 0; i < maxVoices; i++) {
         // set up the basic oscillator chain, muted to begin with.
         var oscillator = context.createOscillator();
         var envelope = context.createGain();
@@ -14795,23 +14801,48 @@ var lvl = [
       this.n = note;
       this.v = vel;
       this.playing = true;
-      this.w = dpx;
-      this.h = dpy;
-      this.x = canvas.width - dpx;
-      this.y = (note_max-note) * dpy;
+      this.w = 1;
+      this.h = 1;
+      this.dx = -20;
+      this.dy = 0;
+      this.x = 99;
+      this.y = (note_max-note);
+      this.boing = 0;
 
       this.update = function(dt) {
-        this.x -= 20 * dpx * dt;
+        this.x += this.dx * dt;
+        this.y += this.dy * dt;
+        if (this.dy || !playing) {
+          this.dx *= Math.pow(0.9, dt);
+          this.dy += gravity * dt;
+        }
         if (this.playing) {
-          this.w += 20 * dpx * dt;
+          this.w += -this.dx * dt;
           if (this.w > canvas.width) {
             // clip wide notes to viewing area
-            this.w = canvas.width;
+            this.w = 100;
             this.x = 0;
           }
+          this.playing = playing;
         }
-        ctx.fillStyle = ccolor[ch] + (88 + this.v).toString(16);
-        ctx.fillRect(this.x, this.y, this.w, this.h);
+        ctx.fillStyle = ccolor[this.c] + (88 + this.v).toString(16);
+        ctx.fillRect(this.x * dpx, this.y * dpy, this.w * dpx, this.h * dpy);
+        if (this.boing > 0) {
+          this.boing -= dt;
+          if (this.boing <= 0) {
+            this.boing = 0;
+            stopNote(this.c, this.n);
+          }
+        }
+      }
+      this.bounce = function() {
+        if (!soundon || this.boing || this.n >= 0x60) return;
+        // make sound of note being hit..
+        this.boing = 0.125;
+        this.c = (this.c + 5) & 0x0f;
+        if (this.n < 0x60) this.n += 12;
+        this.v *= 0.5;
+        startNote(this.c, this.n, this.v);
       }
     }
 
@@ -14835,20 +14866,73 @@ var lvl = [
       }
     }
     function Dot() {
-      this.x = innerWidth / 2;
-      this.y = 2 * dpy;
+      this.x = 50;
+      this.y = 1;
       this.dx = 0;
       this.dy = 0;
+      this.c = false;
       this.update = function(dt) {
-        this.x += this.dx;
-        this.y += this.dy;
+        this.x += this.dx * dt;
+        this.y += this.dy * dt;
         this.dy += gravity * dt;
-        if (this.y > innerHeight - dpy) {
-          this.dx = this.dy = 0;
+        this.dx *= Math.pow(0.9, dt);
+        if (this.x > 99) {
+          this.dx = -this.dx;
+          this.x = 99;
+        }
+        if (this.x < 0 || this.y > note_max - note_min - 1) {
+          resetLevel();
+        }
+        var r = dpy / dpx;
+        this.c = false;  // for result of tests below
+        for (var i = 0, j = noteboxes.length; i < j; i++) {
+          if ((this.y - 1 > noteboxes[i].y + noteboxes[i].h) ||
+            (this.y + 1 < noteboxes[i].y) ||
+            (this.x + r < noteboxes[i].x) ||
+            (this.x - r > noteboxes[i].x + noteboxes[i].w))
+            continue;  // clearly out of bounds
+          this.c = true;  // hit something
+          noteboxes[i].bounce();  // update color and make sound
+          if (this.x < noteboxes[i].x) {
+            // pretend left edge of platform is a sphere
+            var xc = noteboxes[i].x + 0.5 * r;
+            var yc = noteboxes[i].y + 0.5
+            var d = Math.sqrt((xc-this.x)*(xc-this.x)+(yc-this.y)*(yc-this.y));
+            var cx = (xc - this.x)/d;
+            var cy = (yc - this.y)/d;
+            var vx = this.dx - noteboxes[i].dx;
+            var vy = this.dy - noteboxes[i].dy;
+            var s = vx * cx + vy * cy;
+            if (s < 0) return;
+            this.dx -= (0.03 * s * vx);
+            this.dy -= (0.04 * s * vy);
+            noteboxes[i].dx += (0.01 * s * vx);
+            noteboxes[i].dy += (0.01 * s * vy);
+          } else if (this.x > noteboxes[i].x + noteboxes[i].w) {
+            // pretend right edge of platform is a sphere
+            var xc = noteboxes[i].x + noteboxes[i].w - r;
+            var yc = noteboxes[i].y + 0.5
+            var d = Math.sqrt((xc-this.x)*(xc-this.x)+(yc-this.y)*(yc-this.y));
+            var cx = (xc - this.x)/d;
+            var cy = (yc - this.y)/d;
+            var vx = this.dx - noteboxes[i].dx;
+            var vy = this.dy - noteboxes[i].dy;
+            var s = vx * cx + vy * cy;
+            if (s < 0) return;
+            this.dx -= (0.03 * s * vx);
+            this.dy -= (0.04 * s * vy);
+            noteboxes[i].dx += (0.01 * s * vx);
+            noteboxes[i].dy += (0.01 * s * vy);
+          } else {
+            // angle in equals angle out
+            this.dy = -this.dy * 0.9;
+            noteboxes[i].dy += this.dy * 0.05;
+            noteboxes[i].dx += this.dx * 0.05;
+          }
         }
         ctx.fillStyle = '#fff';
         ctx.beginPath();
-        ctx.arc(this.x, this.y, dpy, 0, 360);
+        ctx.arc(this.x * dpx, this.y * dpy, dpy, 0, 360);
         ctx.fill();
       }
       this.jump = function() {
@@ -14857,11 +14941,11 @@ var lvl = [
       }
       this.right = function() {
         // if currently touching something
-        this.dx += 1;
+        this.dx = 10;
       }
       this.left = function() {
         // if currently touching something
-        this.dx -= 1;
+        this.dx = -10;
       }
     }
 
@@ -14869,17 +14953,17 @@ var lvl = [
     var lasttime = 0;
     var level = 0;
     var difficulty = 1000;  // ticks per second
-    var index = 0;
-    var playing = false;
-    var player = new Dot();
+    var index;
+    var playing;
+    var player;
 
     function kbdEvent(event) {
       if (!soundon) resumeAudio(event);
       soundon = playing = true;
-      if (event.code == 'ArrowLeft' || event.code == 'A') {
+      if (event.code == 'ArrowLeft' || event.code == 'KeyA') {
         player.left();
       }
-      if (event.code == 'ArrowRight' || event.code == 'D') {
+      if (event.code == 'ArrowRight' || event.code == 'KeyD') {
         player.right();
       }
       if (event.code == 'Space') {
@@ -14889,7 +14973,17 @@ var lvl = [
     function mouseEvent(event) {
       if (!soundon) resumeAudio(event);
       soundon = playing = true;
+      player.jump();
     }
+    function resetLevel() {
+        killNotes();
+        player = new Dot();
+        index = 0;
+        theta = 0;
+        playing = false;
+    }
+    resetLevel();
+    var theta = 0;
     function animate(timestamp) {
 	ctx.clearRect(0, 0, canvas.width, canvas.height);
 	var dt = (timestamp - lasttime) / 1000;
@@ -14909,11 +15003,9 @@ var lvl = [
           }
           index++;
           if (index >= lvl[level].length) {
-            player = new Dot();
-            index = 0;
-            playing = false;
             level++;
-            if (level > 9) {
+            resetLevel();
+            if (level > 8) {
               level = 0;
               // you win!
             }
@@ -14938,16 +15030,30 @@ var lvl = [
         for (var i = 0, j = noteboxes.length; i < j; i++) {
           noteboxes[i].update(dt);
         }
-        if (playing) {
-          player.update(dt);
-        } else {
-          player.update(0);
-        }
         // delete noteboxes that scroll off screen
         for (var i = noteboxes.length - 1; i >= 0; i--) {
-          if (noteboxes[i].x + noteboxes[i].w < 0) {
+          if (noteboxes[i].x + noteboxes[i].w < 0 ||
+              noteboxes[i].y > note_max - note_min) {
             noteboxes.splice(i, 1);
           }
+        }
+        if (playing) {
+          player.update((runtime > 1 ? dt : 0));
+          if (runtime < 1) {
+            ctx.font = 10 * dpy + 'px Fredericka the Great';
+            ctx.fillText((1 - runtime).toFixed(1), 41 * dpx, 15 * dpy);
+          }
+        } else {
+          theta += dt * 6;
+          if (theta > 2 * Math.PI) {
+            theta -= 2 * Math.PI;
+          }
+          var sx = 0.01 * Math.sin(theta);
+          player.update(0);
+          ctx.font = (1 - sx) * 10 * dpy + 'px Fredericka the Great';
+          ctx.fillText("Prelude " + (level + 1), (1 + sx) * 10 * dpx, 20 * dpy);
+          ctx.font = (1 + sx) * 4 * dpy + 'px Fredericka the Great';
+          ctx.fillText("Jump to start...", (1 - sx) * 10 * dpx, 25 * dpy);
         }
 	requestAnimationFrame(animate);
     }
