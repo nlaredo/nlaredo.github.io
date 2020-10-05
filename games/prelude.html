@@ -14903,7 +14903,7 @@ var lvl = [
             var vx = this.dx - noteboxes[i].dx;
             var vy = this.dy - noteboxes[i].dy;
             var s = vx * cx + vy * cy;
-            if (s < 0) return;
+            if (s < 0) continue;
             this.dx -= (0.03 * s * vx);
             this.dy -= (0.04 * s * vy);
             noteboxes[i].dx += (0.01 * s * vx);
@@ -14918,7 +14918,7 @@ var lvl = [
             var vx = this.dx - noteboxes[i].dx;
             var vy = this.dy - noteboxes[i].dy;
             var s = vx * cx + vy * cy;
-            if (s < 0) return;
+            if (s < 0) continue;
             this.dx -= (0.03 * s * vx);
             this.dy -= (0.04 * s * vy);
             noteboxes[i].dx += (0.01 * s * vx);
