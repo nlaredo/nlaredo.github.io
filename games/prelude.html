@@ -14623,8 +14623,8 @@ var lvl = [
     var note_max = 0x60;
     var canvas = document.querySelector('canvas');
     var ctx = canvas.getContext('2d');
-    var dpx, dpy;
-    var gravity = 20;
+    var dpx = 1, dpy = 1, dpr = 1;
+    var gravity = 9.8;
 
     function failaudio() { soundon = false; }
     function startaudio() { soundon = true; }
@@ -14760,10 +14760,15 @@ var lvl = [
     }
 
     function resizeCanvas() {
+      ctx.resetTransform();
       canvas.width = window.innerWidth;
       canvas.height = window.innerHeight;
       dpx = canvas.width / 100;
       dpy = canvas.height / (note_max - note_min);
+      if (dpx <= 0) dpx = 1;
+      if (dpy <= 0) dpy = 1;
+      dpr = dpx/dpy;
+      ctx.scale(dpx, dpy);
     }
     resizeCanvas();
     initaudio();
@@ -14798,6 +14803,8 @@ var lvl = [
 
     function NoteBox(ch, note, vel) {
       this.c = ch;
+      this.cc = 0;
+      this.b = 0;
       this.n = note;
       this.v = vel;
       this.playing = true;
@@ -14825,24 +14832,36 @@ var lvl = [
           }
           this.playing = playing;
         }
-        ctx.fillStyle = ccolor[this.c] + (88 + this.v).toString(16);
-        ctx.fillRect(this.x * dpx, this.y * dpy, this.w * dpx, this.h * dpy);
+        if (this.cc) {
+          this.cc += 8 * dt;
+        }
         if (this.boing > 0) {
           this.boing -= dt;
           if (this.boing <= 0) {
             this.boing = 0;
-            stopNote(this.c, this.n);
+            stopNote(this.c, this.n + 12 * this.b);
           }
         }
+        ctx.fillStyle = ccolor[(this.c + Math.floor(this.cc)) & 0xf] +
+                        (88 + this.v).toString(16);
+        ctx.beginPath();
+        ctx.ellipse(this.x, this.y + 0.5, 0.5 / dpr, 0.5, 0,
+                    0.5 * Math.PI, 1.5 * Math.PI);
+        ctx.ellipse(this.x + this.w, this.y + 0.5, 0.5 / dpr, 0.5, 0,
+                    1.5 * Math.PI, 0.5 * Math.PI);
+        ctx.fill();
       }
       this.bounce = function() {
-        if (!soundon || this.boing || this.n >= 0x60) return;
-        // make sound of note being hit..
-        this.boing = 0.125;
-        this.c = (this.c + 5) & 0x0f;
-        if (this.n < 0x60) this.n += 12;
-        this.v *= 0.5;
-        startNote(this.c, this.n, this.v);
+        if (!soundon || this.boing) return;
+        this.b += 1;
+        this.cc += 1;
+        score += this.b;
+        if (this.n + 12 * this.b < 0x7f) {
+          // make sound of note being hit..
+          this.v *= 0.5;
+          startNote(this.c, this.n + 12 * this.b, this.v);
+          this.boing = 0.125;
+        }
       }
     }
 
@@ -14880,64 +14899,65 @@ var lvl = [
           this.dx = -this.dx;
           this.x = 99;
         }
-        if (this.x < 0 || this.y > note_max - note_min - 1) {
-          resetLevel();
+        if (this.y < 0) {
+          this.dy = 0;
+          this.y = 0;
         }
-        var r = dpy / dpx;
+        if (this.x < 0 || this.y > note_max - note_min - 1) {
+          resetLevel(true);
+        }
+        var r = 0.5 / dpr;
         this.c = false;  // for result of tests below
         for (var i = 0, j = noteboxes.length; i < j; i++) {
-          if ((this.y - 1 > noteboxes[i].y + noteboxes[i].h) ||
-            (this.y + 1 < noteboxes[i].y) ||
-            (this.x + r < noteboxes[i].x) ||
-            (this.x - r > noteboxes[i].x + noteboxes[i].w))
+          if ((this.y > noteboxes[i].y + noteboxes[i].h + 0.5) ||
+            (this.y < noteboxes[i].y - 0.5) ||
+            (this.x < noteboxes[i].x - r) ||
+            (this.x > noteboxes[i].x + noteboxes[i].w + r))
             continue;  // clearly out of bounds
           this.c = true;  // hit something
           noteboxes[i].bounce();  // update color and make sound
-          if (this.x < noteboxes[i].x) {
-            // pretend left edge of platform is a sphere
-            var xc = noteboxes[i].x + 0.5 * r;
-            var yc = noteboxes[i].y + 0.5
-            var d = Math.sqrt((xc-this.x)*(xc-this.x)+(yc-this.y)*(yc-this.y));
-            var cx = (xc - this.x)/d;
-            var cy = (yc - this.y)/d;
-            var vx = this.dx - noteboxes[i].dx;
-            var vy = this.dy - noteboxes[i].dy;
-            var s = vx * cx + vy * cy;
-            if (s < 0) continue;
-            this.dx -= (0.03 * s * vx);
-            this.dy -= (0.04 * s * vy);
-            noteboxes[i].dx += (0.01 * s * vx);
-            noteboxes[i].dy += (0.01 * s * vy);
-          } else if (this.x > noteboxes[i].x + noteboxes[i].w) {
-            // pretend right edge of platform is a sphere
-            var xc = noteboxes[i].x + noteboxes[i].w - r;
-            var yc = noteboxes[i].y + 0.5
-            var d = Math.sqrt((xc-this.x)*(xc-this.x)+(yc-this.y)*(yc-this.y));
-            var cx = (xc - this.x)/d;
-            var cy = (yc - this.y)/d;
-            var vx = this.dx - noteboxes[i].dx;
-            var vy = this.dy - noteboxes[i].dy;
-            var s = vx * cx + vy * cy;
-            if (s < 0) continue;
-            this.dx -= (0.03 * s * vx);
-            this.dy -= (0.04 * s * vy);
-            noteboxes[i].dx += (0.01 * s * vx);
-            noteboxes[i].dy += (0.01 * s * vy);
-          } else {
-            // angle in equals angle out
-            this.dy = -this.dy * 0.9;
-            noteboxes[i].dy += this.dy * 0.05;
-            noteboxes[i].dx += this.dx * 0.05;
+          // impact with sphere aligned with ball within platform extents
+          var yc = noteboxes[i].y + 0.5;
+          var xc = this.x;
+          if (xc < noteboxes[i].x || xc > noteboxes[i].x + noteboxes[i].w) {
+            xc = noteboxes[i].x;
+          }
+          // distance between two centers
+          var d = Math.sqrt((xc-this.x)*(xc-this.x)+(yc-this.y)*(yc-this.y));
+          if (d <= 0)
+            d = 1;
+          // normal
+          var nx = (xc - this.x)/d;
+          var ny = (yc - this.y)/d;
+          // diff velocities
+          var kx = this.dx - noteboxes[i].dx;
+          var ky = this.dy - noteboxes[i].dy;
+          var m2 = noteboxes[i].w + 1;  // ball=1, notebox=m2
+          var p = 2 * (nx * kx + ny * ky) / (1 + m2);
+          // update velocities
+          this.dx -= (p * m2 * nx) * 1;
+          this.dy -= (p * m2 * ny) * 1;
+          noteboxes[i].dx += (p * 1 * nx) * 1;
+          noteboxes[i].dy += (p * 1 * ny) * 1;
+          var co = d - 0.5 - r;
+          if (co < 0 && d > 0) { // handle static overlap
+            var oy = this.y;
+            this.x -= co * (this.x - xc) / d;
+            this.y -= co * (this.y - yc) / d;
           }
         }
         ctx.fillStyle = '#fff';
         ctx.beginPath();
-        ctx.arc(this.x * dpx, this.y * dpy, dpy, 0, 360);
+        ctx.ellipse(this.x, this.y, r, 0.5, 0, 0, 360);
         ctx.fill();
       }
       this.jump = function() {
         // if currently touching something
         this.dy = -gravity;
+      }
+      this.down = function() {
+        // if currently touching something
+        this.dy = gravity;
       }
       this.right = function() {
         // if currently touching something
@@ -14945,13 +14965,15 @@ var lvl = [
       }
       this.left = function() {
         // if currently touching something
-        this.dx = -10;
+        this.dx = -22;
       }
     }
 
     var start = -1;
     var lasttime = 0;
     var level = 0;
+    var score = 0;
+    var highscore = 2368;  // good luck with the game!
     var difficulty = 1000;  // ticks per second
     var index;
     var playing;
@@ -14960,14 +14982,31 @@ var lvl = [
     function kbdEvent(event) {
       if (!soundon) resumeAudio(event);
       soundon = playing = true;
-      if (event.code == 'ArrowLeft' || event.code == 'KeyA') {
+      if (event.code == 'ArrowLeft' ||
+          event.code == 'KeyA' ||
+          event.code == 'KeyH') {
         player.left();
       }
-      if (event.code == 'ArrowRight' || event.code == 'KeyD') {
+      if (event.code == 'ArrowRight' ||
+          event.code == 'KeyD' || 
+          event.code == 'KeyL') {
         player.right();
       }
-      if (event.code == 'Space') {
+      if (event.code == 'Space' ||
+          event.code == 'KeyW' ||
+          event.code == 'KeyK' ||
+          event.code == 'ArrowUp') {
         player.jump();
+      }
+      if (event.code == 'ShiftLeft' ||
+          event.code == 'KeyS' ||
+          event.code == 'KeyJ' ||
+          event.code == 'ArrowDown') {
+        player.down();
+      }
+      if (event.code == 'Escape') {
+        // pause/repeat level
+        resetLevel(false);
       }
     }
     function mouseEvent(event) {
@@ -14975,14 +15014,17 @@ var lvl = [
       soundon = playing = true;
       player.jump();
     }
-    function resetLevel() {
+    function resetLevel(endgame) {
         killNotes();
         player = new Dot();
         index = 0;
-        theta = 0;
         playing = false;
+        if (endgame) {
+          score = 0;
+          level = 0;
+        }
     }
-    resetLevel();
+    resetLevel(true);
     var theta = 0;
     function animate(timestamp) {
 	ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -15004,7 +15046,7 @@ var lvl = [
           index++;
           if (index >= lvl[level].length) {
             level++;
-            resetLevel();
+            resetLevel(false);
             if (level > 8) {
               level = 0;
               // you win!
@@ -15012,19 +15054,19 @@ var lvl = [
           }
         }
 
-        ctx.font = 5 * dpy + 'px Fredericka the Great';
+        ctx.font = '5px Fredericka the Great';
         ctx.fillStyle = '#8ff';
-        ctx.fillText(runtime.toFixed(2), 5, 5 * dpy);
-        ctx.font = 2 * dpy + 'px Fredericka the Great';
-        ctx.fillText("Bounce the ball to the purple platform",
-                52 * dpx, 2.5 * dpy);
-        ctx.fillText("to stop repeating this level...",
-                52 * dpx, 5 * dpy);
+        ctx.fillText(score, 5, 5);
+        if (score > highscore)
+          highscore = score;
+        ctx.font = '2px Fredericka the Great';
+        ctx.fillText(highscore, 88, 5);
+        ctx.fillText("High Score", 88, 2.5);
+        ctx.fillText("Bounce the ball to the end", 52, 2.5);
+        ctx.fillText("of each song for next level...", 52, 5);
 
-        ctx.fillText("A = Left, D = Right",
-                18 * dpx, 2.5 * dpy);
-        ctx.fillText("Space = Jump",
-                18 * dpx, 5 * dpy);
+        ctx.fillText("WASD or HJKL or Arrows", 18, 2.5);
+        ctx.fillText("Shift/Space to move", 18, 5);
 
         // draw noteboxes
         for (var i = 0, j = noteboxes.length; i < j; i++) {
@@ -15040,8 +15082,8 @@ var lvl = [
         if (playing) {
           player.update((runtime > 1 ? dt : 0));
           if (runtime < 1) {
-            ctx.font = 10 * dpy + 'px Fredericka the Great';
-            ctx.fillText((1 - runtime).toFixed(1), 41 * dpx, 15 * dpy);
+            ctx.font = '10px Fredericka the Great';
+            ctx.fillText((1 - runtime).toFixed(1), 41, 15);
           }
         } else {
           theta += dt * 6;
@@ -15050,10 +15092,10 @@ var lvl = [
           }
           var sx = 0.01 * Math.sin(theta);
           player.update(0);
-          ctx.font = (1 - sx) * 10 * dpy + 'px Fredericka the Great';
-          ctx.fillText("Prelude " + (level + 1), (1 + sx) * 10 * dpx, 20 * dpy);
-          ctx.font = (1 + sx) * 4 * dpy + 'px Fredericka the Great';
-          ctx.fillText("Jump to start...", (1 - sx) * 10 * dpx, 25 * dpy);
+          ctx.font = (1 - sx) * 10 + 'px Fredericka the Great';
+          ctx.fillText("Prelude " + (level + 1), (1 + sx) * 10, 20);
+          ctx.font = (1 + sx) * 4 + 'px Fredericka the Great';
+          ctx.fillText("Move to play...", (1 - sx) * 10, 25);
         }
 	requestAnimationFrame(animate);
     }
