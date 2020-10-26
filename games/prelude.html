@@ -14691,12 +14691,13 @@ var lvl = [
       return mastertune * Math.pow(2,(note-69)/12);
     }
 
-    function startNote(channel, note, velocity) {
+    function startNote(channel, note, velocity, pan) {
       var i = nextNote(note);
       voice[i].note = note;
       voice[i].freq = noteFreq(note);
       voice[i].hold1 = false;
       voice[i].sostenuto = false;
+      voice[i].pan.pan.value = pan;
       voice[i].osc.frequency.setValueAtTime(voice[i].freq, 0);
       voice[i].osc.type = waveform;
       if (voice[i].start < 0)
@@ -14745,9 +14746,11 @@ var lvl = [
         // set up the basic oscillator chain, muted to begin with.
         var oscillator = context.createOscillator();
         var envelope = context.createGain();
+        var panner = context.createStereoPanner();
         oscillator.frequency.value = 0;
         oscillator.connect(envelope);
-        envelope.connect(mastervol);
+        envelope.connect(panner);
+        panner.connect(mastervol);
         envelope.gain.value = 0.0;  // Mute the sound
         voice.push({
           start: -1,
@@ -14755,6 +14758,7 @@ var lvl = [
           freq: 0,
           osc: oscillator,
           env: envelope,
+          pan: panner,
         });
       }
     }
@@ -14859,7 +14863,8 @@ var lvl = [
         if (this.n + 12 * this.b < 0x7f) {
           // make sound of note being hit..
           this.v *= 0.5;
-          startNote(this.c, this.n + 12 * this.b, this.v);
+          startNote(this.c, this.n + 12 * this.b,
+                    this.v, (this.x/100.0) - 0.5);
           this.boing = 0.125;
         }
       }
@@ -14881,7 +14886,7 @@ var lvl = [
       }
       noteboxes.push(new NoteBox(ch, note, vel));
       if (soundon) {
-        startNote(ch, note, vel);
+        startNote(ch, note, vel, 0.2857 * (index & 7) - 1);
       }
     }
     function Dot() {
@@ -14890,7 +14895,21 @@ var lvl = [
       this.dx = 0;
       this.dy = 0;
       this.c = false;
+      this.up = false;
+      this.down = false;
+      this.left = false;
+      this.right = false;
+      this.targetX = 0;
+      this.targetY = 0;
       this.update = function(dt) {
+        if (this.up) { this.dy = -gravity; }
+        if (this.down) { this.dy = gravity; }
+        if (this.left) { this.dx = -22; }
+        if (this.right) { this.dx = 10; }
+        if (this.targetX > 0 && this.targetY > 0) {
+          this.dx += 0.005 * (this.targetX - this.x);
+          this.dy += 0.005 * (this.targetY - this.y);
+        }
         this.x += this.dx * dt;
         this.y += this.dy * dt;
         this.dy += gravity * dt;
@@ -14951,25 +14970,32 @@ var lvl = [
         ctx.ellipse(this.x, this.y, r, 0.5, 0, 0, 360);
         ctx.fill();
       }
-      this.jump = function() {
-        // if currently touching something
-        this.dy = -gravity;
+      this.moveUp = function(state) {
+        this.up = state;
       }
-      this.down = function() {
-        // if currently touching something
-        this.dy = gravity;
+      this.moveDown = function(state) {
+        this.down = state;
       }
-      this.right = function() {
-        // if currently touching something
-        this.dx = 10;
+      this.moveLeft = function(state) {
+        this.left = state;
       }
-      this.left = function() {
-        // if currently touching something
-        this.dx = -22;
+      this.moveRight = function(state) {
+        this.right = state;
+      }
+      this.moveTarget = function(x, y) {
+        this.targetX = x;
+        this.targetY = y;
+      }
+      this.moving = function() {
+        return this.up || this.down || this.left || this.right;
+      }
+      this.stop = function() {
+        this.up = this.down = this.left = this.right = false;
       }
     }
 
-    var start = -1;
+    var jank = false;
+    var runtime = 0;
     var lasttime = 0;
     var level = 0;
     var score = 0;
@@ -14981,45 +15007,74 @@ var lvl = [
 
     function kbdEvent(event) {
       if (!soundon) resumeAudio(event);
-      soundon = playing = true;
+      var state = (event.type == 'keydown');
       if (event.code == 'ArrowLeft' ||
           event.code == 'KeyA' ||
           event.code == 'KeyH') {
-        player.left();
+        player.moveLeft(state);
       }
       if (event.code == 'ArrowRight' ||
           event.code == 'KeyD' || 
           event.code == 'KeyL') {
-        player.right();
+        player.moveRight(state);
       }
       if (event.code == 'Space' ||
           event.code == 'KeyW' ||
           event.code == 'KeyK' ||
           event.code == 'ArrowUp') {
-        player.jump();
+        player.moveUp(state);
       }
       if (event.code == 'ShiftLeft' ||
           event.code == 'KeyS' ||
           event.code == 'KeyJ' ||
           event.code == 'ArrowDown') {
-        player.down();
+        player.moveDown(state);
       }
       if (event.code == 'Escape') {
         // pause/repeat level
         resetLevel(false);
       }
+      if (event.key <= '9' && event.key >= '1') {
+        index = 0;
+        runtime = 0;
+        level = event.key - 1;
+        resetLevel(false);
+      }
+      if (state && !event.shiftKey && !event.ctrlKey && !event.altKey) {
+        soundon = playing = true;
+      }
     }
     function mouseEvent(event) {
       if (!soundon) resumeAudio(event);
-      soundon = playing = true;
-      player.jump();
+      var x = 0;
+      var y = 0;
+      if (event.buttons) {  // only move if buttons pressed
+        x = event.clientX/dpx;
+        y = event.clientY/dpy;
+        soundon = playing = true;
+      }
+      player.moveTarget(x, y);
     }
+
+    function handletouch(event) {
+      event.preventDefault();
+      var x = 0;
+      var y = 0;
+      if (event.touches.length() > 0) {
+        x = event.touches[0].clientX/dpx;
+        y = event.touches[0].clientY/dpy;
+        soundon = playing = true;
+      }
+      player.moveTarget(x, y);
+    }
+
     function resetLevel(endgame) {
         killNotes();
         player = new Dot();
-        index = 0;
         playing = false;
         if (endgame) {
+          index = 0;
+          runtime = 0;
           score = 0;
           level = 0;
         }
@@ -15030,12 +15085,14 @@ var lvl = [
 	ctx.clearRect(0, 0, canvas.width, canvas.height);
 	var dt = (timestamp - lasttime) / 1000;
 	lasttime = timestamp;
-	if (!playing) {
-	    start = timestamp;
+        if (dt > 0.25) {
+           resetLevel(false);  // browser under 4fps
+           jank = true;
         }
-	var runtime = (timestamp - start) / 1000;
-        var tick = runtime * difficulty;
-        while (playing && tick >= lvl[level][index].t) {
+	if (playing) {
+	    runtime += dt * difficulty;
+        }
+        while (playing && runtime >= lvl[level][index].t) {
           var e = lvl[level][index];
           var ch = e.s & 0x0f;
           if ((e.s & 0xf0) == 0x90) {
@@ -15047,6 +15104,8 @@ var lvl = [
           if (index >= lvl[level].length) {
             level++;
             resetLevel(false);
+            index = 0;
+            runtime = 0;
             if (level > 8) {
               level = 0;
               // you win!
@@ -15054,19 +15113,19 @@ var lvl = [
           }
         }
 
-        ctx.font = '5px Fredericka the Great';
-        ctx.fillStyle = '#8ff';
-        ctx.fillText(score, 5, 5);
         if (score > highscore)
           highscore = score;
+        ctx.fillStyle = '#8ff';
         ctx.font = '2px Fredericka the Great';
-        ctx.fillText(highscore, 88, 5);
+        ctx.fillText("Score", 2, 2.5);
         ctx.fillText("High Score", 88, 2.5);
-        ctx.fillText("Bounce the ball to the end", 52, 2.5);
-        ctx.fillText("of each song for next level...", 52, 5);
+        ctx.fillText(score, 2, 5);
+        ctx.fillText(highscore, 88, 5);
+        ctx.fillText("Bounce through each song...", 52, 2.5);
+        ctx.fillText("Smash into notes for points", 52, 5);
 
-        ctx.fillText("WASD or HJKL or Arrows", 18, 2.5);
-        ctx.fillText("Shift/Space to move", 18, 5);
+        ctx.fillText("WASD/HJKL/Arrows to move", 18, 2.5);
+        ctx.fillText("Esc to pause, level select: 1-9", 18, 5);
 
         // draw noteboxes
         for (var i = 0, j = noteboxes.length; i < j; i++) {
@@ -15079,12 +15138,12 @@ var lvl = [
             noteboxes.splice(i, 1);
           }
         }
+        var levelName = "Prelude " + (level + 1);
         if (playing) {
-          player.update((runtime > 1 ? dt : 0));
-          if (runtime < 1) {
-            ctx.font = '10px Fredericka the Great';
-            ctx.fillText((1 - runtime).toFixed(1), 41, 15);
-          }
+          jank = false;
+          player.update(dt);
+          ctx.font = '2px Fredericka the Great';
+          ctx.fillText(levelName, 46, note_max - note_min - 1);
         } else {
           theta += dt * 6;
           if (theta > 2 * Math.PI) {
@@ -15093,14 +15152,25 @@ var lvl = [
           var sx = 0.01 * Math.sin(theta);
           player.update(0);
           ctx.font = (1 - sx) * 10 + 'px Fredericka the Great';
-          ctx.fillText("Prelude " + (level + 1), (1 + sx) * 10, 20);
+          ctx.fillText(levelName, (1 + sx) * 10, 20);
           ctx.font = (1 + sx) * 4 + 'px Fredericka the Great';
-          ctx.fillText("Move to play...", (1 - sx) * 10, 25);
+          if (jank) {
+            ctx.fillText("Auto paused, move to resume...", (1 - sx) * 10, 25);
+          } else {
+            ctx.fillText("Move to play...", (1 - sx) * 10, 25);
+          }
         }
 	requestAnimationFrame(animate);
     }
     window.addEventListener('keydown', kbdEvent);
+    window.addEventListener('keyup', kbdEvent);
     canvas.addEventListener('mousedown', mouseEvent);
+    canvas.addEventListener('mousemove', mouseEvent);
+    canvas.addEventListener('mouseup', mouseEvent);
+    canvas.addEventListener('touchstart', handletouch);
+    canvas.addEventListener('touchmove', handletouch);
+    canvas.addEventListener('touchend', handletouch);
+    canvas.addEventListener('touchcancel', handletouch);
     requestAnimationFrame(animate);
  </script>
 </body>
