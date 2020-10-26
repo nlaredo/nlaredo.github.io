@@ -15057,10 +15057,11 @@ var lvl = [
     }
 
     function handletouch(event) {
+      if (!soundon) resumeAudio(event);
       event.preventDefault();
       var x = 0;
       var y = 0;
-      if (event.touches.length() > 0) {
+      if (event.touches[0]) {
         x = event.touches[0].clientX/dpx;
         y = event.touches[0].clientY/dpy;
         soundon = playing = true;
