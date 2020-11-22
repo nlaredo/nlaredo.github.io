@@ -1,0 +1,233 @@
+<html>
+ <head>
+  <title>Mandelbrot Explorer</title>
+  <style>
+   body { border:0; margin: 0; }
+   canvas { border: 0; margin:0; background:#007; }
+  </style>
+ </head>
+<body>
+ <canvas id='mycanvas'>
+ </canvas>
+ <script>
+    var canvas = document.querySelector('canvas');
+    var ctx = canvas.getContext('2d');
+    var xmin, ymin, dscale, xfocus, yfocus, radius;
+    var xpos = 0;
+    var ypos = 0;
+    var done = false;
+    var workUnit = 1;  // start small to detect refresh rate
+    var img = null;
+    var maxIteration = 1000;
+    function calcScale() {
+      // given xfocus, yfocus, radius: calc xmin, ymin, dscale
+      xmin = xfocus - radius;
+      ymin = yfocus - radius;
+      var dpx = Math.floor(canvas.width/2) / (xfocus - xmin);
+      var dpy = Math.floor(canvas.height/2) / (yfocus - ymin);
+      dscale = 1 / (dpx < dpy ? dpx : dpy);
+      // re-center within available space
+      var cx = (xfocus - xmin) / dscale;
+      var cy = (yfocus - ymin) / dscale;
+      ymin = Math.floor(cy - canvas.height/2) * dscale + ymin;
+      xmin = Math.floor(cx - canvas.width/2) * dscale + xmin;
+    }
+    function resetFocus() {
+      xfocus = 0;
+      yfocus = 0;
+      radius = 2;
+      calcScale();
+    }
+    resetFocus();
+
+    var ctable = [];
+
+    function makeColors() {
+      var t = 2 * Math.PI / maxIteration;
+      var mr = 7;
+      var mb = 9;
+      var mg = 11;
+      // ctable index 0: 100 65 165 (#6441A5)
+      var or = Math.asin((100-128)/127);
+      var og = Math.asin((65-128)/127);
+      var ob = Math.asin((165-128)/127);
+      for (i = 0; i <= maxIteration; i++) {
+        var a = i * t;
+        var r = Math.floor(128 + 127 * Math.sin(a*mr+or));
+        var b = Math.floor(128 + 127 * Math.sin(a*mb+ob));
+        var g = Math.floor(128 + 127 * Math.sin(a*mg+og));
+        ctable.push([r, g, b]);
+      }
+    }
+    makeColors();
+
+    function mandelbrot(px, py) {
+      var x0 = px * dscale + xmin;
+      var y0 = py * dscale + ymin;
+      var x = 0; //z.r
+      var y = 0; //z.i
+      var i = 0;
+      var xsq = 0;
+      var ysq = 0;
+      do {
+        y = x * y;
+        y += y;
+        y += y0;
+        x = xsq - ysq + x0;
+        xsq = x * x;
+        ysq = y * y;
+        i++;
+      } while (xsq + ysq <= 4 && i < maxIteration);
+      return i;
+    }
+
+    function calcWork() {
+      for (var work = 0; !done && work < workUnit; work++) {
+          var o = ypos * 4 * canvas.width + 4 * xpos;
+          var c = ctable[mandelbrot(xpos, ypos)];
+          img.data[o] = c[0];
+          img.data[o + 1] = c[1];
+          img.data[o + 2] = c[2];
+          img.data[o + 3] = 255;
+          xpos++;
+          if (xpos >= canvas.width) {
+            xpos = 0
+            ypos++;
+            if (ypos >= canvas.height) {
+              ypos = 0;
+              done = true;
+            }
+          }
+      }
+    }
+    function startCalc() {
+      xpos = 0;
+      ypos = 0;
+      done = false;
+    }
+    function saveState() {
+      var hash=`x=${xfocus}&y=${yfocus}&r=${radius}`;
+      var baseUrl = window.location.href.split('#')[0];
+      window.location.replace(baseUrl + '#' + hash);
+    }
+    function loadState() {
+      var args = window.location.hash.substr(1).split('&');
+      var x, y, r;
+      args.forEach(function(arg) {
+        var v = arg.split('=');
+        if (v.length < 2)
+          return;
+        var f = parseFloat(v[1]);
+        if (v[0] == "x") x = f;
+        if (v[0] == "y") y = f;
+        if (v[0] == "r") r = f;
+      });
+      if (x > -4 && x < 4) xfocus = x;
+      if (y > -4 && y < 4) yfocus = y;
+      if (r > 0 && r < 4) radius = r;
+    }
+    loadState();
+    function resizeCanvas() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+      calcScale();
+      saveState();
+
+      if (img == null ||
+          img.width != canvas.width || img.height != canvas.height) {
+        img = ctx.createImageData(canvas.width, canvas.height);
+      }
+
+      startCalc();
+    }
+    resizeCanvas();
+
+    var lasttime = 0;
+    var refresh = 1000/30;  // 30fps initial budget
+    var mouseDown = null;
+    var mouseMove = null;
+
+    function mouseEvent(event) {
+      event.preventDefault();
+      if (event.type == "mousedown")
+        mouseDown = event;
+      if (event.type == "mousemove")
+        mouseMove = event;
+      if (event.type == "mouseup") {
+        if (mouseDown) {
+          // map selected pixels to complex values
+          var x0 = mouseDown.clientX * dscale + xmin;
+          var y0 = mouseDown.clientY * dscale + ymin;
+          var x1 = event.clientX * dscale + xmin;
+          var y1 = event.clientY * dscale + ymin;
+
+          // swap if needed to make x0 < x1 && y0 < y1
+          if (x1 < x0) { var t = x0; x0 = x1; x1 = t; }
+          if (y1 < y0) { var t = y0; y0 = y1; y1 = t; }
+
+          if (x1 > x0 && y1 > y0) {
+            // find center pixel of selected region
+            xfocus = (x0 + x1) / 2;
+            yfocus = (y0 + y1) / 2;
+
+            var dx = xfocus - x0;
+            var dy = yfocus - y0;
+            radius = Math.sqrt(dx*dx + dy*dy);
+          } else {
+            if (radius <= 2) {
+              // zoom out with center on x,y
+              var dx = xfocus - x0;
+              var dy = yfocus - y0;
+              xfocus += dx;
+              yfocus += dy;
+              radius *= 2;
+            } else {
+              resetFocus();
+            }
+          }
+          resizeCanvas();
+        }
+        mouseDown = null;
+        mouseMove = null;
+      }
+    }
+    function animate(timestamp) {
+	var dt = timestamp - lasttime;
+	lasttime = timestamp;
+        ctx.putImageData(img, 0, 0);
+        if (mouseMove && mouseDown) {
+          ctx.beginPath();
+          var r = timestamp & 0xff;
+          var g = (timestamp >> 1) & 0xff;
+          var b = (timestamp >> 2) & 0xff;
+          ctx.strokeStyle = `rgb(${r},${g},${b})`;
+          ctx.rect(mouseDown.clientX, mouseDown.clientY,
+          mouseMove.clientX - mouseDown.clientX,
+          mouseMove.clientY - mouseDown.clientY)
+          ctx.stroke();
+        }
+        calcWork();
+
+        if (dt < refresh || done) {
+            refresh = dt;
+        }
+        // adjust work unit size to match available time budget
+        if (!done) {
+          refresh += 1; // relax threshold to point of correction
+          if (dt > refresh && workUnit > 128) {
+            workUnit = Math.floor(workUnit * 0.75);
+          } else {
+            workUnit += 1234;
+          }
+        }
+	requestAnimationFrame(animate);
+    }
+
+    window.addEventListener('resize', resizeCanvas);
+    canvas.addEventListener('mouseup', mouseEvent);
+    canvas.addEventListener('mousedown', mouseEvent);
+    canvas.addEventListener('mousemove', mouseEvent);
+    requestAnimationFrame(animate);
+ </script>
+</body>
+</html>
