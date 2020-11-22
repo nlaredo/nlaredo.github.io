@@ -147,13 +147,32 @@
     var mouseDown = null;
     var mouseMove = null;
 
+    function touchEvent(event) {
+      event.preventDefault();
+      if (event.touches[0]) {
+        event.clientX = event.touches[0].clientX;
+        event.clientY = event.touches[0].clientY;
+        if (mouseDown == null) {
+          mouseDown = event;
+        } else {
+          mouseMove = event;
+        }
+      }
+      if (event.type == "touchend" && mouseDown) {
+        mouseEvent(mouseMove ? mouseMove : mouseDown);
+      }
+      if (event.type == "touchcancel") {
+        mouseDown = null;
+        mouseMove = null;
+      }
+    }
     function mouseEvent(event) {
       event.preventDefault();
-      if (event.type == "mousedown")
+      if (event.type == "mousedown") {
         mouseDown = event;
-      if (event.type == "mousemove")
+      } else if (event.type == "mousemove") {
         mouseMove = event;
-      if (event.type == "mouseup") {
+      } else {
         if (mouseDown) {
           // map selected pixels to complex values
           var x0 = mouseDown.clientX * dscale + xmin;
@@ -223,10 +242,16 @@
 	requestAnimationFrame(animate);
     }
 
+    var pfft = {passive:false};
     window.addEventListener('resize', resizeCanvas);
-    canvas.addEventListener('mouseup', mouseEvent);
-    canvas.addEventListener('mousedown', mouseEvent);
-    canvas.addEventListener('mousemove', mouseEvent);
+    canvas.addEventListener('mouseup', mouseEvent, pfft);
+    canvas.addEventListener('mousedown', mouseEvent, pfft);
+    canvas.addEventListener('mousemove', mouseEvent, pfft);
+    canvas.addEventListener('touchstart', touchEvent, pfft);
+    canvas.addEventListener('touchend', touchEvent, pfft);
+    canvas.addEventListener('touchmove', touchEvent, pfft);
+    canvas.addEventListener('touchcancel', touchEvent, pfft);
+
     requestAnimationFrame(animate);
  </script>
 </body>
