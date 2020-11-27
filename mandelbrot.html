@@ -1,36 +1,98 @@
 <html>
  <head>
   <title>Mandelbrot Explorer</title>
+  <link rel="preconnect" href="https://fonts.gstatic.com">
+  <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@700&display=swap" rel="stylesheet">
   <style>
    body { border:0; margin: 0; }
-   canvas { border: 0; margin:0; background:#007; }
+   canvas { border: 0; margin:0; background:#6441A5; }
+   #reset { position: fixed; top:10px; left:10px; }
+   #save { position: fixed; top:10px; right:10px; }
   </style>
  </head>
 <body>
+  <!-- Global site tag (gtag.js) - Google Analytics -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-J4DSMHX8B7"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+
+    gtag('config', 'G-J4DSMHX8B7');
+  </script>
  <canvas id='mycanvas'>
  </canvas>
+ <input type="button" value="Reset View" id="reset" onclick="resetFocus();" />
+ <input type="button" value="Save PNG" id="save" onclick="savePNG();" />
  <script>
     var canvas = document.querySelector('canvas');
     var ctx = canvas.getContext('2d');
     var xmin, ymin, dscale, xfocus, yfocus, radius;
-    var xpos = 0;
-    var ypos = 0;
-    var done = false;
+    var xpos, ypos, cdx, cdy, done;
+    var tscale, midX, midY, avgD, tx, ty, cx, cy;
+    var DEFAULT_MR = 13;
+    var DEFAULT_MB = 11;
+    var DEFAULT_MG = 10;
+    var DEFAULT_I = 888;
+    var mr = DEFAULT_MR;
+    var mb = DEFAULT_MB;
+    var mg = DEFAULT_MG;
     var workUnit = 1;  // start small to detect refresh rate
+    var px, pxtot;
     var img = null;
-    var maxIteration = 1000;
+    var png = null;
+    var gotPNG = false;
+    var maxIter = DEFAULT_I;
+
+    function savePNG() {
+      var link = document.createElement("a");
+      png.src.replace("img/png", "image/octet-strean");
+      link.href = png.src;
+      // set suggested filename to contain coordinates and options
+      link.download = `mandelbrot${
+        encodeURIComponent(window.location.hash)}.png`;
+      link.click();
+    }
+    function drawScaledImageData(i, x, y, s) {
+      if (gotPNG) {
+        ctx.putImageData(i, 0, 0);
+        ctx.drawImage(png, x, y, canvas.width * s, canvas.height * s);
+        return;
+      }
+      if (!done && !numTouches) {
+        ctx.putImageData(i, x, y);
+        return;
+      }
+      ctx.putImageData(i, 0, 0);
+      png.src = canvas.toDataURL("image/png");
+      gotPNG = true;
+    }
+    function getScaledImageData(i, x, y, s) {
+        drawScaledImageData(i, x, y, s);
+        var newImg = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        gotPNG = false;
+        return newImg;
+    }
+
+    // given xfocus, yfocus, radius: calc new dscale, xmin, ymin
     function calcScale() {
-      // given xfocus, yfocus, radius: calc xmin, ymin, dscale
-      xmin = xfocus - radius;
-      ymin = yfocus - radius;
-      var dpx = Math.floor(canvas.width/2) / (xfocus - xmin);
-      var dpy = Math.floor(canvas.height/2) / (yfocus - ymin);
-      dscale = 1 / (dpx < dpy ? dpx : dpy);
-      // re-center within available space
-      var cx = (xfocus - xmin) / dscale;
-      var cy = (yfocus - ymin) / dscale;
-      ymin = Math.floor(cy - canvas.height/2) * dscale + ymin;
-      xmin = Math.floor(cx - canvas.width/2) * dscale + xmin;
+      // per pixel delta
+      dscale = radius / ((cx < cy) ? cx : cy);
+      // center within available space
+      xmin = xfocus - cx * dscale;
+      ymin = yfocus - cy * dscale;
+      done = false;
+      xpos = ypos = cdx = 0;
+      cdy = -1;
+      pxtot = cx * cy * 4; px = 0;
+      if (img) saveState();  // only save state *after* first render
+
+      tx = ty = 0;
+      tscale = 1;
+      midX = cx;
+      midY = cy;
+      avgD = 0;
+      gotPNG = false;
     }
     function resetFocus() {
       xfocus = 0;
@@ -43,21 +105,22 @@
     var ctable = [];
 
     function makeColors() {
-      var t = 2 * Math.PI / maxIteration;
-      var mr = 7;
-      var mb = 9;
-      var mg = 11;
+      var t = 2 * Math.PI / 256;
+      var a = 0;
       // ctable index 0: 100 65 165 (#6441A5)
       var or = Math.asin((100-128)/127);
       var og = Math.asin((65-128)/127);
       var ob = Math.asin((165-128)/127);
-      for (i = 0; i <= maxIteration; i++) {
-        var a = i * t;
+      ctable = [];
+      for (i = 0; i < maxIter; i++) {
+        a += t;
+        t *= Math.pow(0.90, (1 / (i/10+3)));
         var r = Math.floor(128 + 127 * Math.sin(a*mr+or));
         var b = Math.floor(128 + 127 * Math.sin(a*mb+ob));
         var g = Math.floor(128 + 127 * Math.sin(a*mg+og));
         ctable.push([r, g, b]);
       }
+      ctable.push(ctable[0]);
     }
     makeColors();
 
@@ -77,42 +140,59 @@
         xsq = x * x;
         ysq = y * y;
         i++;
-      } while (xsq + ysq <= 4 && i < maxIteration);
+      } while (xsq + ysq <= 4 && i < maxIter);
       return i;
     }
 
     function calcWork() {
       for (var work = 0; !done && work < workUnit; work++) {
-          var o = ypos * 4 * canvas.width + 4 * xpos;
-          var c = ctable[mandelbrot(xpos, ypos)];
+        // calculate in spiral from center
+        var x = cx + xpos;
+        var y = cy + ypos;
+        if (x >= 0 && x < canvas.width &&
+            y >= 0 && y <= canvas.height) {
+          var o = y * 4 * canvas.width + 4 * x;
+          var c = ctable[mandelbrot(x, y)];
           img.data[o] = c[0];
           img.data[o + 1] = c[1];
           img.data[o + 2] = c[2];
           img.data[o + 3] = 255;
-          xpos++;
-          if (xpos >= canvas.width) {
-            xpos = 0
-            ypos++;
-            if (ypos >= canvas.height) {
-              ypos = 0;
-              done = true;
-            }
-          }
+          px++;
+        } else {
+          done = (px >= pxtot);
+        }
+        if ((xpos == ypos) ||
+            ((xpos < 0) && (xpos == -ypos)) ||
+            ((xpos > 0) && (xpos == 1 - ypos))) {
+          var dx = cdx;
+          cdx = -cdy;
+          cdy = dx;
+        }
+        xpos += cdx;
+        ypos += cdy
       }
     }
     function startCalc() {
-      xpos = 0;
-      ypos = 0;
       done = false;
     }
     function saveState() {
+      window.onhashchange = null;
       var hash=`x=${xfocus}&y=${yfocus}&r=${radius}`;
       var baseUrl = window.location.href.split('#')[0];
+      if (mr != DEFAULT_MR) hash+=`&mr=${mr}`;
+      if (mb != DEFAULT_MB) hash+=`&mb=${mb}`;
+      if (mg != DEFAULT_MG) hash+=`&mg=${mg}`;
+      if (maxIter != DEFAULT_I) hash+=`&i=${maxIter}`;
       window.location.replace(baseUrl + '#' + hash);
+      window.onhashchange = loadState;
     }
     function loadState() {
       var args = window.location.hash.substr(1).split('&');
-      var x, y, r;
+      var x, y, r, i;
+      // reset color multipliers that aren't specified in url
+      mr = DEFAULT_MR;
+      mb = DEFAULT_MB;
+      mg = DEFAULT_MG;
       args.forEach(function(arg) {
         var v = arg.split('=');
         if (v.length < 2)
@@ -121,21 +201,31 @@
         if (v[0] == "x") x = f;
         if (v[0] == "y") y = f;
         if (v[0] == "r") r = f;
+        if (v[0] == "mr") mr = f;
+        if (v[0] == "mb") mb = f;
+        if (v[0] == "mg") mg = f;
+        if (v[0] == "i") i = Math.floor(f);
       });
       if (x > -4 && x < 4) xfocus = x;
       if (y > -4 && y < 4) yfocus = y;
       if (r > 0 && r < 4) radius = r;
+      if (i > 63 && i < 1048576) maxIter = i;
+      calcScale();
+      makeColors();
+      saveState(); // remake the "canonical" url
     }
     loadState();
     function resizeCanvas() {
       canvas.width = window.innerWidth;
       canvas.height = window.innerHeight;
+      cx = Math.floor(canvas.width / 2);
+      cy = Math.floor(canvas.height / 2);
       calcScale();
-      saveState();
 
-      if (img == null ||
+      if (img == null || png == null ||
           img.width != canvas.width || img.height != canvas.height) {
         img = ctx.createImageData(canvas.width, canvas.height);
+        png = new Image(canvas.width, canvas.height);
       }
 
       startCalc();
@@ -146,28 +236,81 @@
     var refresh = 1000/30;  // 30fps initial budget
     var mouseDown = null;
     var mouseMove = null;
+    var mouseOver = null;
+    var numTouches = 0;
 
+    // handle touch events:
+    // find average point of all active touches
+    // find average distance from midpoint to active touches
+    // for touchmove events only:
+    //   tx += last midpoint midX - current midpoint x
+    //   ty += last midpoint midY - current midpoint y
+    //   update midX, midY to current average midpoint
+    //   tscale *= last average distance (avgD) / current average distance
+    //   update avgD to current average distance
+    // for touchstart/touchend only:
+    //   update midX, midY, avgD; no change in tscale or tx, ty
     function touchEvent(event) {
       event.preventDefault();
-      if (event.touches[0]) {
-        event.clientX = event.touches[0].clientX;
-        event.clientY = event.touches[0].clientY;
-        if (mouseDown == null) {
-          mouseDown = event;
-        } else {
-          mouseMove = event;
+      done = true;  // stop work if user is interacting
+      numTouches = event.touches.length;
+      var curMidX = 0, curMidY = 0, curAvgD = 0;
+      if (event.touches.length > 0) {
+        for (var i = 0; i < numTouches; i++) {
+          curMidX += event.touches[i].clientX;
+          curMidY += event.touches[i].clientY;
         }
+        curMidX /= numTouches;
+        curMidY /= numTouches;
+        for (var i = 0; i < numTouches; i++) {
+          var dx = event.touches[i].clientX - midX;
+          var dy = event.touches[i].clientY - midY;
+          var d = Math.sqrt(dx * dx + dy * dy);
+          curAvgD += d;
+        }
+        curAvgD /= numTouches;
       }
-      if (event.type == "touchend" && mouseDown) {
-        mouseEvent(mouseMove ? mouseMove : mouseDown);
+
+      if (event.type == "touchend" && !event.touches.length) {
+        // calculate new scale based on last tx, ty, tscale
+        var centerx = (tx - cx) / tscale + cx;
+        var centery = (ty - cy) / tscale + cy;
+        xfocus -= centerx * dscale;
+        yfocus -= centery * dscale;
+        radius /= tscale;
+        img = getScaledImageData(img, tx, ty, tscale);
+        calcScale();
+        return;
       }
       if (event.type == "touchcancel") {
-        mouseDown = null;
-        mouseMove = null;
+        tx = 0;
+        ty = 0;
+        midX = cx;
+        midY = cy;
+        tscale = 1;
+        avgD = 0;
       }
+      if (event.type == "touchmove") {
+        tx += curMidX - midX;
+        ty += curMidY - midY;
+        if (numTouches > 1) {
+          var s = curAvgD / avgD;
+          tx = (tx - curMidX) * s + curMidX;
+          ty = (ty - curMidY) * s + curMidY;
+          tscale *= s;
+        }
+      }
+      midX = curMidX;
+      midY = curMidY;
+      avgD = curAvgD;
     }
     function mouseEvent(event) {
       event.preventDefault();
+      if (event.type == "mouseleave") {
+        mouseDown = null;
+        mouseMove = null;
+        return;
+      }
       if (event.type == "mousedown") {
         mouseDown = event;
       } else if (event.type == "mousemove") {
@@ -207,22 +350,69 @@
           resizeCanvas();
         }
         mouseDown = null;
-        mouseMove = null;
       }
+    }
+    function centerText(text, y) {
+      var t = ctx.measureText(text);
+      ctx.fillText(text, cx - t.width/2, y);
+      return t.width/2;
     }
     function animate(timestamp) {
 	var dt = timestamp - lasttime;
 	lasttime = timestamp;
-        ctx.putImageData(img, 0, 0);
+        var msb = Math.ceil(Math.log2(dscale));
+        var pct = Math.floor(100*px/pxtot);
+        drawScaledImageData(img, tx, ty, tscale);
+        ctx.fillStyle = '#f00';
+        if (pct < 100) {
+          ctx.fillRect(0,35,canvas.width, 5);
+          ctx.fillStyle = '#0f0';
+          ctx.fillRect(0,35,canvas.width * pct / 100, 5);
+        }
+        ctx.fillStyle = 'rgba(0,0,0,0.33)';
+        ctx.fillRect(0,0,canvas.width, 40);
+        ctx.fillStyle = (msb > -51 ? '#fff' : '#f77');
+        ctx.font = '14px Roboto Mono';
+        ctx.fillText(msb, cx + centerText(
+                `x=${xfocus.toExponential(16)}   ` +
+                `y=${yfocus.toExponential(16)}   ` +
+                `r=${radius.toExponential(16)}   2`, 28), 18);
+        if (mouseMove) {
+          var xm = mouseMove.clientX * dscale + xmin;
+          var ym = mouseMove.clientY * dscale + ymin;
+          centerText(`x=${xm.toExponential(16)}   ` +
+                     `y=${ym.toExponential(16)}`, 12);
+        }
+
+        var c = [
+          128 + Math.floor(127 * Math.sin(0.07 * timestamp/7)),
+          128 + Math.floor(127 * Math.sin(0.07 * timestamp/3)),
+          128 + Math.floor(127 * Math.sin(0.07 * timestamp/5))
+        ];
+        ctx.strokeStyle = `rgb(${c[0]},${c[1]},${c[2]})`;
+        ctx.fillStyle = `rgb(${c[1]},${c[2]},${c[0]})`;
         if (mouseMove && mouseDown) {
+          var x0 = mouseDown.clientX;
+          var y0 = mouseDown.clientY;
+          var x1 = mouseMove.clientX;
+          var y1 = mouseMove.clientY;
+          var xc = (x0 + x1)/2;
+          var yc = (y0 + y1)/2;
+          var dx = xc - x0;
+          var dy = yc - y0;
+          var r = Math.sqrt(dx*dx+dy*dy);
           ctx.beginPath();
-          var r = timestamp & 0xff;
-          var g = (timestamp >> 1) & 0xff;
-          var b = (timestamp >> 2) & 0xff;
-          ctx.strokeStyle = `rgb(${r},${g},${b})`;
-          ctx.rect(mouseDown.clientX, mouseDown.clientY,
-          mouseMove.clientX - mouseDown.clientX,
-          mouseMove.clientY - mouseDown.clientY)
+          ctx.arc(xc, yc, r, 0, 2 * Math.PI);
+          ctx.rect(x0, y0, x1-x0, y1-y0);
+          ctx.stroke();
+          ctx.beginPath();
+          ctx.arc(x0, y0, 3, 0, 2 * Math.PI);
+          ctx.arc(x1, y1, 3, 0, 2 * Math.PI);
+          ctx.fill();
+        }
+        if (numTouches > 1) {
+          ctx.beginPath();
+          ctx.arc(midX, midY, 3 + avgD, 0, 2 * Math.PI);
           ctx.stroke();
         }
         calcWork();
@@ -233,10 +423,10 @@
         // adjust work unit size to match available time budget
         if (!done) {
           refresh += 1; // relax threshold to point of correction
-          if (dt > refresh && workUnit > 128) {
+          if (dt > refresh && workUnit > 4) {
             workUnit = Math.floor(workUnit * 0.75);
           } else {
-            workUnit += 1234;
+            workUnit += Math.floor(1048576 / maxIter);
           }
         }
 	requestAnimationFrame(animate);
@@ -247,6 +437,7 @@
     canvas.addEventListener('mouseup', mouseEvent, pfft);
     canvas.addEventListener('mousedown', mouseEvent, pfft);
     canvas.addEventListener('mousemove', mouseEvent, pfft);
+    canvas.addEventListener('mouseleave', mouseEvent, pfft);
     canvas.addEventListener('touchstart', touchEvent, pfft);
     canvas.addEventListener('touchend', touchEvent, pfft);
     canvas.addEventListener('touchmove', touchEvent, pfft);
@@ -254,5 +445,6 @@
 
     requestAnimationFrame(animate);
  </script>
+
 </body>
 </html>
