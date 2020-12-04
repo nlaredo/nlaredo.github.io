@@ -6,8 +6,8 @@
   <style>
    body { border:0; margin: 0; }
    canvas { border: 0; margin:0; background:#6441A5; }
-   #reset { position: fixed; top:10px; left:10px; }
-   #save { position: fixed; top:10px; right:10px; }
+   #reset { position: fixed; bottom:12px; left:12px; }
+   #save { position: fixed; bottom:12px; right:12px; }
   </style>
  </head>
 <body>
@@ -17,32 +17,264 @@
     window.dataLayer = window.dataLayer || [];
     function gtag(){dataLayer.push(arguments);}
     gtag('js', new Date());
-
     gtag('config', 'G-J4DSMHX8B7');
+    gtag('event', 'screen_view', { 'app_version': '44' });
   </script>
  <canvas id='mycanvas'>
  </canvas>
  <input type="button" value="Reset View" id="reset" onclick="resetFocus();" />
  <input type="button" value="Save PNG" id="save" onclick="savePNG();" />
  <script>
+const base64wasm =
+// BEGIN-WASM-INCLUDE
+'AGFzbQEAAAABeRNgA39/fwF/YAF/AX9gA39/fwBgAn9/AGACf38Bf2AEf35+fwBgAAF/YAZ/fH9/' +
+'f38Bf2ACfn8Bf2AAAGABfwBgBX9/f39/AGAHf39/f3x8fABgBX9/f39/AX9gA35/fwF/YAJ/fwF8' +
+'YAJ+fgF8YAF8AXxgAnx/AXwDJiUJAwEMDwERBgAAAQQEBBIADQIBAg4ICAsHAwUFEAIAAgECBgoB' +
+'BAUBcAEFBQUGAQGAEIAQBqcBF38BQeCQwCQLfwBBsA8LfwBBtA8LfwBBvA0LfwBBuA8LfwBBwA8L' +
+'fwBB0A8LfwBBwA0LfwBB9I+AIAt/AEH4j4AgC38AQYCQgCALfwBBiJCAIAt/AEHQj4AgC38AQdSP' +
+'gCALfwBB2I+AIAt/AEHgj4AgC38AQeSPgCALfwBB6I+AIAt/AEHsj4AgC38AQfCPgCALfwBBvA8L' +
+'fwBBkJCAIAt/AEG4DQsH3AIiBm1lbW9yeQIAGV9faW5kaXJlY3RfZnVuY3Rpb25fdGFibGUBAAdq' +
+'cHJpbnRmAAEIbG9nc3RhcnQDAQZsb2dsZW4DAgRpbml0AAIIcGl4ZWxNaW4DAwhwaXhlbE1heAME' +
+'CnBpeGVsQ291bnQDBQRkYXRhAwYJc2V0dXBTaXplAAMGc21vb3RoAwcDY2R5AwgGZHNjYWxlAwkE' +
+'eG1pbgMKBHltaW4DCwV3aWR0aAMMBmhlaWdodAMNB21heEl0ZXIDDgJjeAMPAmN5AxADY2R4AxEE' +
+'eXBvcwMSBHhwb3MDEwVwaXhlbAMUCm1hbmRlbGJyb3QABAhjYWxjV29yawAFBmN0YWJsZQMVB2xv' +
+'Z3NpemUDFgtfaW5pdGlhbGl6ZQAAEF9fZXJybm9fbG9jYXRpb24ABwlzdGFja1NhdmUAIgxzdGFj' +
+'a1Jlc3RvcmUAIwpzdGFja0FsbG9jACQJCgEAQQELBAAJGBkK7VIlAwABCzsBAX8jAEEQayICJAAg' +
+'AiABNgIMQbQPQbAPKAIAQbQPKAIAaiAAIAEQCEG0DygCAGo2AgAgAkEQaiQACycBAX9BuA9BvA0o' +
+'AgAiASAAIAAgAUgbIgA2AgBBwA8gADYCAEHQDwvIAQBBwA0gAzYCAEH0j4AgQX82AgBB+I+AICAE' +
+'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' +
+'ACABKQMANwMADwsgAiACKAIAIgFBBGo2AgAgACABMgEANwMADwsgAiACKAIAIgFBBGo2AgAgACAB' +
+'MwEANwMADwsgAiACKAIAIgFBBGo2AgAgACABMAAANwMADwsgAiACKAIAIgFBBGo2AgAgACABMQAA' +
+'NwMADwsgAiACKAIAQQdqQXhxIgFBCGo2AgAgACABKwMAOQMADwsgACACQQQRAwALCzQAIABQRQRA' +
+'A0AgAUEBayIBIACnQQ9xQYANai0AACACcjoAACAAQgSIIgBCAFINAAsLIAELLQAgAFBFBEADQCAB' +
+'QQFrIgEgAKdBB3FBMHI6AAAgAEIDiCIAQgBSDQALCyABC4MBAgN/AX4CQCAAQoCAgIAQVARAIAAh' +
+'BQwBCwNAIAFBAWsiASAAIABCCoAiBUIKfn2nQTByOgAAIABC/////58BViECIAUhACACDQALCyAF' +
+'pyICBEADQCABQQFrIgEgAiACQQpuIgNBCmxrQTByOgAAIAJBCUshBCADIQIgBA0ACwsgAQtsAQF/' +
+'IwBBgAJrIgUkACAEQYDABHEgAiADTHJFBEAgBSABQf8BcSACIANrIgJBgAIgAkGAAkkiARsQHyAB' +
+'RQRAA0AgACAFQYACEBEgAkGAAmsiAkH/AUsNAAsLIAAgBSACEBELIAVBgAJqJAAL7RYDEn8CfgF8' +
+'IwBBsARrIgkkACAJQQA2AiwCfyABvSIYQn9XBEBBASESIAGaIgG9IRhBkA0MAQtBASESQZMNIARB' +
+'gBBxDQAaQZYNIARBAXENABpBACESQQEhE0GRDQshFQJAIBhCgICAgICAgPj/AINCgICAgICAgPj/' +
+'AFEEQCAAQSAgAiASQQNqIg0gBEH//3txEBcgACAVIBIQESAAQasNQa8NIAVBIHEiAxtBow1Bpw0g' +
+'AxsgASABYhtBAxARDAELIAlBEGohEAJAAn8CQCABIAlBLGoQDiIBIAGgIgFEAAAAAAAAAABiBEAg' +
+'CSAJKAIsIgZBAWs2AiwgBUEgciIWQeEARw0BDAMLIAVBIHIiFkHhAEYNAiAJKAIsIQtBBiADIANB' +
+'AEgbDAELIAkgBkEdayILNgIsIAFEAAAAAAAAsEGiIQFBBiADIANBAEgbCyEKIAlBMGogCUHQAmog' +
+'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' +
+'IAIgDSACIA1KGwsoACABIAEoAgBBD2pBcHEiAUEQajYCACAAIAEpAwAgASkDCBAcOQMAC1ABAX4C' +
+'QCADQcAAcQRAIAEgA0FAaq2GIQJCACEBDAELIANFDQAgAiADrSIEhiABQcAAIANrrYiEIQIgASAE' +
+'hiEBCyAAIAE3AwAgACACNwMIC1ABAX4CQCADQcAAcQRAIAIgA0FAaq2IIQFCACECDAELIANFDQAg' +
+'AkHAACADa62GIAEgA60iBIiEIQEgAiAEiCECCyAAIAE3AwAgACACNwMIC9cDAgJ/An4jAEEgayIC' +
+'JAACQCABQv///////////wCDIgVCgICAgICAwIA8fSAFQoCAgICAgMD/wwB9VARAIAFCBIYgAEI8' +
+'iIQhBCAAQv//////////D4MiAEKBgICAgICAgAhaBEAgBEKBgICAgICAgMAAfCEEDAILIARCgICA' +
+'gICAgIBAfSEEIABCgICAgICAgIAIhUIAUg0BIARCAYMgBHwhBAwBCyAAUCAFQoCAgICAgMD//wBU' +
+'IAVCgICAgICAwP//AFEbRQRAIAFCBIYgAEI8iIRC/////////wODQoCAgICAgID8/wCEIQQMAQtC' +
+'gICAgICAgPj/ACEEIAVC////////v//DAFYNAEIAIQQgBUIwiKciA0GR9wBJDQAgAkEQaiAAIAFC' +
+'////////P4NCgICAgICAwACEIgQgA0GB9wBrEBogAiAAIARBgfgAIANrEBsgAikDCEIEhiACKQMA' +
+'IgBCPIiEIQQgAikDECACKQMYhEIAUq0gAEL//////////w+DhCIAQoGAgICAgICACFoEQCAEQgF8' +
+'IQQMAQsgAEKAgICAgICAgAiFQgBSDQAgBEIBgyAEfCEECyACQSBqJAAgBCABQoCAgICAgICAgH+D' +
+'hL8LOwEBfyACBEADQCAAIAEgAkH8AyACQfwDSRsiAxAeIQAgAUH8A2ohASAAQfwDaiEAIAIgA2si' +
+'Ag0ACwsLgQQBA38gAkGABE8EQCAAIAEgAhAdIAAPCyAAIAJqIQMCQCAAIAFzQQNxRQRAAkAgAkEB' +
+'SARAIAAhAgwBCyAAQQNxRQRAIAAhAgwBCyAAIQIDQCACIAEtAAA6AAAgAUEBaiEBIAJBAWoiAiAD' +
+'Tw0BIAJBA3ENAAsLAkAgA0F8cSIEQcAASQ0AIAIgBEFAaiIFSw0AA0AgAiABKAIANgIAIAIgASgC' +
+'BDYCBCACIAEoAgg2AgggAiABKAIMNgIMIAIgASgCEDYCECACIAEoAhQ2AhQgAiABKAIYNgIYIAIg' +
+'ASgCHDYCHCACIAEoAiA2AiAgAiABKAIkNgIkIAIgASgCKDYCKCACIAEoAiw2AiwgAiABKAIwNgIw' +
+'IAIgASgCNDYCNCACIAEoAjg2AjggAiABKAI8NgI8IAFBQGshASACQUBrIgIgBU0NAAsLIAIgBE8N' +
+'AQNAIAIgASgCADYCACABQQRqIQEgAkEEaiICIARJDQALDAELIANBBEkEQCAAIQIMAQsgACADQQRr' +
+'IgRLBEAgACECDAELIAAhAgNAIAIgAS0AADoAACACIAEtAAE6AAEgAiABLQACOgACIAIgAS0AAzoA' +
+'AyABQQRqIQEgAkEEaiICIARNDQALCyACIANJBEADQCACIAEtAAA6AAAgAUEBaiEBIAJBAWoiAiAD' +
+'Rw0ACwsgAAvxAgICfwF+AkAgAkUNACAAIAJqIgNBAWsgAToAACAAIAE6AAAgAkEDSQ0AIANBAmsg' +
+'AToAACAAIAE6AAEgA0EDayABOgAAIAAgAToAAiACQQdJDQAgA0EEayABOgAAIAAgAToAAyACQQlJ' +
+'DQAgAEEAIABrQQNxIgRqIgMgAUH/AXFBgYKECGwiADYCACADIAIgBGtBfHEiAmoiAUEEayAANgIA' +
+'IAJBCUkNACADIAA2AgggAyAANgIEIAFBCGsgADYCACABQQxrIAA2AgAgAkEZSQ0AIAMgADYCGCAD' +
+'IAA2AhQgAyAANgIQIAMgADYCDCABQRBrIAA2AgAgAUEUayAANgIAIAFBGGsgADYCACABQRxrIAA2' +
+'AgAgAiADQQRxQRhyIgFrIgJBIEkNACAArSIFQiCGIAWEIQUgASADaiEBA0AgASAFNwMYIAEgBTcD' +
+'ECABIAU3AwggASAFNwMAIAFBIGohASACQSBrIgJBH0sNAAsLC1kBAX8gACAALQBKIgFBAWsgAXI6' +
+'AEogACgCACIBQQhxBEAgACABQSByNgIAQX8PCyAAQgA3AgQgACAAKAIsIgE2AhwgACABNgIUIAAg' +
+'ASAAKAIwajYCEEEAC6gBAQN/AkAgASACKAIQIgQEfyAEBSACECANASACKAIQCyACKAIUIgVrSwRA' +
+'IAIgACABIAIoAiQRAAAaDwsCQCACLABLQQBIDQAgASEEA0AgBCIDRQ0BIAAgA0EBayIEai0AAEEK' +
+'Rw0ACyACIAAgAyACKAIkEQAAIANJDQEgACADaiEAIAEgA2shASACKAIUIQULIAUgACABEB4aIAIg' +
+'AigCFCABajYCFAsLBAAjAAsGACAAJAALEAAjACAAa0FwcSIAJAAgAAsLrAMSAEGkCAsBAgBBywgL' +
+'Bf//////AEGQCQsQLSsgICAwWDB4AChudWxsKQBBsAkLQREACgAREREAAAAABQAAAAAAAAkAAAAA' +
+'CwAAAAAAAAAAEQAPChEREQMKBwABAAkLCwAACQYLAAALAAYRAAAAERERAEGBCgshCwAAAAAAAAAA' +
+'EQAKChEREQAKAAACAAkLAAAACQALAAALAEG7CgsBDABBxwoLFQwAAAAADAAAAAAJDAAAAAAADAAA' +
+'DABB9QoLAQ4AQYELCxUNAAAABA0AAAAACQ4AAAAAAA4AAA4AQa8LCwEQAEG7CwseDwAAAAAPAAAA' +
+'AAkQAAAAAAAQAAAQAAASAAAAEhISAEHyCwsOEgAAABISEgAAAAAAAAkAQaMMCwELAEGvDAsVCgAA' +
+'AAAKAAAAAAkLAAAAAAALAAALAEHdDAsBDABB6QwLSwwAAAAADAAAAAAJDAAAAAAADAAADAAAMDEy' +
+'MzQ1Njc4OUFCQ0RFRi0wWCswWCAwWC0weCsweCAweABpbmYASU5GAG5hbgBOQU4ALgBBuQ0LCBAA' +
+'AABAAAABAEH0DgsEPAhABA==' +
+'';
+// END-WASM-INCLUDE
+
     var canvas = document.querySelector('canvas');
     var ctx = canvas.getContext('2d');
+    var maxCanvas = 4096 * 4096;
+    var data32 = null;  // for 32-bit canvas data access
     var xmin, ymin, dscale, xfocus, yfocus, radius;
     var xpos, ypos, cdx, cdy, done;
     var tscale, midX, midY, avgD, tx, ty, cx, cy;
-    var DEFAULT_MR = 13;
-    var DEFAULT_MB = 11;
-    var DEFAULT_MG = 10;
+    var DEFAULT_MR = 11;
+    var DEFAULT_MB = 12;
+    var DEFAULT_MG = 13;
     var DEFAULT_I = 888;
+    var DEFAULT_G = false;
+    var DEFAULT_S = false;
     var mr = DEFAULT_MR;
     var mb = DEFAULT_MB;
     var mg = DEFAULT_MG;
+    var grayscale = DEFAULT_G;
+    var smooth = DEFAULT_S;
     var workUnit = 1;  // start small to detect refresh rate
+    var useWasm = 1;
     var px, pxtot;
     var img = null;
     var png = null;
     var gotPNG = false;
     var maxIter = DEFAULT_I;
+
+    var wasmptr = null, wasm = null;
+    function wasmConsole() {
+      const start = new Uint32Array(wasm.memory.buffer, wasm.logstart, 1);
+      const len = new Uint32Array(wasm.memory.buffer, wasm.loglen, 1);
+      if (len[0] <= 0)
+        return;
+      const bytes = new Uint8Array(wasm.memory.buffer, start[0], len[0]);
+      const s = new TextDecoder('utf8').decode(bytes);
+      // mark message as output
+      len[0] = 0;
+      console.log(s);
+    }
 
     function savePNG() {
       var link = document.createElement("a");
@@ -93,6 +325,10 @@
       midY = cy;
       avgD = 0;
       gotPNG = false;
+      if (wasm) {
+        wasm.setupSize(canvas.width, canvas.height, maxIter, smooth,
+                       dscale, xmin, ymin);
+      }
     }
     function resetFocus() {
       xfocus = 0;
@@ -102,6 +338,7 @@
     }
     resetFocus();
 
+    var cctable = null;
     var ctable = [];
 
     function makeColors() {
@@ -118,20 +355,29 @@
         var r = Math.floor(128 + 127 * Math.sin(a*mr+or));
         var b = Math.floor(128 + 127 * Math.sin(a*mb+ob));
         var g = Math.floor(128 + 127 * Math.sin(a*mg+og));
+        if (grayscale) {
+          var v = Math.floor(0.299 * r + 0.587 * g + 0.114 * b);
+          r = g = b = v;
+        }
+        if (cctable) {
+          cctable[i] = r | (g << 8) | (b << 16) | 0xff000000;
+        }
         ctable.push([r, g, b]);
       }
       ctable.push(ctable[0]);
+      if (cctable) {
+        cctable[i] = cctable[0]
+      }
     }
-    makeColors();
 
     function mandelbrot(px, py) {
       var x0 = px * dscale + xmin;
       var y0 = py * dscale + ymin;
-      var x = 0; //z.r
-      var y = 0; //z.i
+      var x = x0; //z.r
+      var y = y0; //z.i
       var i = 0;
-      var xsq = 0;
-      var ysq = 0;
+      var xsq = x*x;
+      var ysq = y*y;
       do {
         y = x * y;
         y += y;
@@ -140,8 +386,11 @@
         xsq = x * x;
         ysq = y * y;
         i++;
-      } while (xsq + ysq <= 4 && i < maxIter);
-      return i;
+      } while (i < maxIter && xsq + ysq <= 256);
+      if (smooth && i < maxIter - 2) {
+        i += 1-Math.log((0.5 * Math.log(xsq + ysq))/Math.log(2))/Math.log(2);
+      }
+      return i; 
     }
 
     function calcWork() {
@@ -151,15 +400,24 @@
         var y = cy + ypos;
         if (x >= 0 && x < canvas.width &&
             y >= 0 && y <= canvas.height) {
-          var o = y * 4 * canvas.width + 4 * x;
-          var c = ctable[mandelbrot(x, y)];
-          img.data[o] = c[0];
-          img.data[o + 1] = c[1];
-          img.data[o + 2] = c[2];
-          img.data[o + 3] = 255;
+          var o = y * canvas.width + x;
+          var it = mandelbrot(x, y);
+          var i = Math.floor(it);
+          if (smooth && i < maxIter) {
+            var e = (i + 1) - it;
+            if (i <= 0) i = e = 0;
+            var f = 1 - e;
+            var c1 = ctable[i];
+            var c2 = ctable[i + 1];
+            o *= 4;
+            img.data[o] = Math.floor(c1[0] * e + c2[0] * f);
+            img.data[o + 1] = Math.floor(c1[1] * e + c2[1] * f);
+            img.data[o + 2] = Math.floor(c1[2] * e + c2[2] * f);
+            img.data[o + 3] = 255;
+          } else {
+            data32[o] = cctable[i]
+          }
           px++;
-        } else {
-          done = (px >= pxtot);
         }
         if ((xpos == ypos) ||
             ((xpos < 0) && (xpos == -ypos)) ||
@@ -183,12 +441,15 @@
       if (mb != DEFAULT_MB) hash+=`&mb=${mb}`;
       if (mg != DEFAULT_MG) hash+=`&mg=${mg}`;
       if (maxIter != DEFAULT_I) hash+=`&i=${maxIter}`;
+      if (grayscale != DEFAULT_G) hash+=`&g=${grayscale ? 1 : 0}`;
+      if (smooth != DEFAULT_S) hash+=`&s=${smooth ? 1 : 0}`;
+      if (!useWasm) hash+='&w=0';
       window.location.replace(baseUrl + '#' + hash);
       window.onhashchange = loadState;
     }
     function loadState() {
       var args = window.location.hash.substr(1).split('&');
-      var x, y, r, i;
+      var x, y, r, i, s, g;
       // reset color multipliers that aren't specified in url
       mr = DEFAULT_MR;
       mb = DEFAULT_MB;
@@ -204,12 +465,17 @@
         if (v[0] == "mr") mr = f;
         if (v[0] == "mb") mb = f;
         if (v[0] == "mg") mg = f;
-        if (v[0] == "i") i = Math.floor(f);
+        if (v[0] == "i") i = f|0;
+        if (v[0] == "s") s = f|0;
+        if (v[0] == "g") g = f|0;
+        if (v[0] == "w") useWasm = f|0;
       });
       if (x > -4 && x < 4) xfocus = x;
       if (y > -4 && y < 4) yfocus = y;
       if (r > 0 && r < 4) radius = r;
       if (i > 63 && i < 1048576) maxIter = i;
+      if (s == 0 || s > 0) smooth = (s > 0);
+      if (g == 0 || g > 0) grayscale = (g > 0);
       calcScale();
       makeColors();
       saveState(); // remake the "canonical" url
@@ -222,15 +488,17 @@
       cy = Math.floor(canvas.height / 2);
       calcScale();
 
-      if (img == null || png == null ||
-          img.width != canvas.width || img.height != canvas.height) {
-        img = ctx.createImageData(canvas.width, canvas.height);
+      if (wasmptr && wasm && (img == null || png == null ||
+          img.width != canvas.width || img.height != canvas.height)) {
+        var wasmdata = new Uint8ClampedArray(wasm.memory.buffer, wasmptr,
+                canvas.width * canvas.height * 4);
+        data32 = new Uint32Array(wasm.memory.buffer, wasmptr, maxCanvas);
+        // TODO: pass rendering parameters to wasm code
+        img = new ImageData(wasmdata, canvas.width, canvas.height);
         png = new Image(canvas.width, canvas.height);
       }
-
-      startCalc();
+      if (img) startCalc();
     }
-    resizeCanvas();
 
     var lasttime = 0;
     var refresh = 1000/30;  // 30fps initial budget
@@ -304,6 +572,10 @@
       midY = curMidY;
       avgD = curAvgD;
     }
+    function mouseWheel(event) {
+      event.preventDefault();
+      console.log(event);
+    }
     function mouseEvent(event) {
       event.preventDefault();
       if (event.type == "mouseleave") {
@@ -336,7 +608,7 @@
             var dy = yfocus - y0;
             radius = Math.sqrt(dx*dx + dy*dy);
           } else {
-            if (radius <= 2) {
+            if (radius <= 4) {
               // zoom out with center on x,y
               var dx = xfocus - x0;
               var dy = yfocus - y0;
@@ -363,25 +635,26 @@
         var msb = Math.ceil(Math.log2(dscale));
         var pct = Math.floor(100*px/pxtot);
         drawScaledImageData(img, tx, ty, tscale);
+        ctx.fillStyle = 'rgba(0,0,0,0.33)';
+        ctx.fillRect(0,canvas.height-48,canvas.width, 48);
         ctx.fillStyle = '#f00';
         if (pct < 100) {
-          ctx.fillRect(0,35,canvas.width, 5);
+          ctx.fillRect(0,canvas.height-48,canvas.width, 5);
           ctx.fillStyle = '#0f0';
-          ctx.fillRect(0,35,canvas.width * pct / 100, 5);
+          ctx.fillRect(0,canvas.height-48,canvas.width * pct / 100, 5);
         }
-        ctx.fillStyle = 'rgba(0,0,0,0.33)';
-        ctx.fillRect(0,0,canvas.width, 40);
         ctx.fillStyle = (msb > -51 ? '#fff' : '#f77');
         ctx.font = '14px Roboto Mono';
         ctx.fillText(msb, cx + centerText(
                 `x=${xfocus.toExponential(16)}   ` +
                 `y=${yfocus.toExponential(16)}   ` +
-                `r=${radius.toExponential(16)}   2`, 28), 18);
+                `r=${radius.toExponential(16)}   2`, canvas.height - 18),
+                canvas.height - 28);
         if (mouseMove) {
           var xm = mouseMove.clientX * dscale + xmin;
           var ym = mouseMove.clientY * dscale + ymin;
           centerText(`x=${xm.toExponential(16)}   ` +
-                     `y=${ym.toExponential(16)}`, 12);
+                     `y=${ym.toExponential(16)}`, canvas.height - 3);
         }
 
         var c = [
@@ -415,7 +688,12 @@
           ctx.arc(midX, midY, 3 + avgD, 0, 2 * Math.PI);
           ctx.stroke();
         }
-        calcWork();
+        if (useWasm && wasm) {
+          px = wasm.calcWork(workUnit);
+        } else {
+          calcWork();
+        }
+        done = (px >= pxtot);
 
         if (dt < refresh || done) {
             refresh = dt;
@@ -430,6 +708,7 @@
           }
         }
 	requestAnimationFrame(animate);
+        wasmConsole();
     }
 
     var pfft = {passive:false};
@@ -438,12 +717,28 @@
     canvas.addEventListener('mousedown', mouseEvent, pfft);
     canvas.addEventListener('mousemove', mouseEvent, pfft);
     canvas.addEventListener('mouseleave', mouseEvent, pfft);
+    canvas.addEventListener('wheel', mouseWheel, pfft);
+    canvas.addEventListener('scroll', mouseWheel, pfft);
     canvas.addEventListener('touchstart', touchEvent, pfft);
     canvas.addEventListener('touchend', touchEvent, pfft);
     canvas.addEventListener('touchmove', touchEvent, pfft);
     canvas.addEventListener('touchcancel', touchEvent, pfft);
 
-    requestAnimationFrame(animate);
+    const decode = (b64) => {
+      var a = Uint8Array.from(atob(base64wasm), c => c.charCodeAt(0));
+      return a.buffer;
+    };
+
+    WebAssembly.instantiate(new Uint8Array(decode(base64wasm))
+    ).then(result => {
+      wasm = result.instance.exports;
+      wasmptr = wasm.init(maxCanvas);  // setup max expected size
+      cctable = new Uint32Array(wasm.memory.buffer, wasm.ctable, 1048576);
+      makeColors();
+      resizeCanvas();
+      window.requestAnimationFrame(animate);
+    });
+
  </script>
 
 </body>
