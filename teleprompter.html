@@ -1,0 +1,318 @@
+<html>
+ <head>
+  <title>Teleprompter</title>
+  <link rel="preconnect" href="https://fonts.gstatic.com">
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400&display=swap" rel="stylesheet">
+  <style>
+   body { border:0; margin: 0; background:#000; }
+   canvas { border: 0; margin:0; background:#000; }
+   input {
+     width:48px; height:48px;
+     background:#012; color:#055;
+     border:1px solid #000;
+     border-radius: 16px;
+     text-align:center; vertical-align: middle;
+     font-weight:bold;
+     outline:none;
+   }
+   input:hover { background:#123; }
+   #mirrory { position: fixed; top:12px; left:60px; }
+   #mirrorx { position: fixed; top:60px; left:12px; }
+   #fontplus { position: fixed; top:12px; right:12px; }
+   #fontminus { position: fixed; top:60px; right:12px; }
+   #pause { position: fixed; bottom:12px; left:12px; }
+   #restart { position: fixed; bottom:12px; right:12px; }
+  </style>
+ </head>
+<body>
+  <!-- Global site tag (gtag.js) - Google Analytics -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-J4DSMHX8B7"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+    gtag('config', 'G-J4DSMHX8B7');
+    gtag('event', 'screen_view', { 'app_version': '45' });
+  </script>
+ <canvas id='mycanvas'>
+ </canvas>
+ <input type="button" value="X" id="mirrorx" onclick="mirrorX();" />
+ <input type="button" value="Y" id="mirrory" onclick="mirrorY();" />
+ <input type="button" value="+" id="fontplus" onclick="fontPlus();" />
+ <input type="button" value="-" id="fontminus" onclick="fontMinus();" />
+ <input type="button" value="| |" id="pause" onclick="pause();" />
+ <input type="button" value="|&#9664;&#9664;" id="restart" onclick="restart();" />
+ <script>
+    const canvas = document.querySelector('canvas');
+    const ctx = canvas.getContext('2d');
+    let mouseDown = null;
+    let mouseMove = null;
+    let numTouches = 0;
+    let cx, cy, midX, midY, avgD, tx, ty, tscale;
+    let flipX = 0;
+    let flipY = 0;
+    let tSize = 0;
+    let yPos;
+    let wBox = 0; // for letterboxing 16x9 area
+    let hBox = 0; // for letterboxing 16x9 area
+    let ySpeed = -0.00125;
+    let paused = false;
+    function mirrorX() { flipX = 1 - flipX; resizeCanvas(); }
+    function mirrorY() { flipY = 1 - flipY; resizeCanvas(); }
+    function fontPlus() { tSize += innerHeight / 32; resizeCanvas(); }
+    function fontMinus() { tSize -= innerHeight / 32; resizeCanvas(); }
+    function restart() { yPos = innerHeight + tSize; paused = false; }
+    function pause() { paused = !paused; }
+
+    function updateView(dx, dy, ds, midX, midY) {
+      lastmove = lasttime;
+      // calculate new scale and position based on dx, dy, ds
+      let sdx = (tx - midX) * ds + midX - tx;
+      let sdy = (ty - midY) * ds + midY - ty;
+      if (!(midX === undefined || midY === undefined)) {
+        lastMidX = midX;
+        lastMidY = midY;
+      }
+      let newTscale = tScale * ds;
+      let newTx = tx + dx + sdx;
+      let newTy = ty + dy + sdy;
+      const centerx = (newTx - cx) / tscale + cx;
+      const centery = (newTy - cy) / tscale + cy;
+      const newXfocus = xfocus - centerx * dscale;
+      const newYfocus = yfocus - centery * dscale;
+      // limit x,yfocus to no greater than radius 3 from origin
+      const rsquared = newXfocus * newXfocus + newYfocus * newYfocus;
+      const mRadius = (newRadius - 3 > 3 ? newRadius - 3 : 3);
+      if (rsquared > mRadius * mRadius) {
+        const d = Math.sqrt(rsquared);
+        const ndx = newXfocus / d;
+        const ndy = newYfocus / d;
+        newTx += (newXfocus - ndx * mRadius) / dscale;
+        newTy += (newYfocus - ndy * mRadius) / dscale;
+      }
+      // commit valid view
+      tx = newTx;
+      ty = newTy;
+      tscale = newTscale;
+    }
+
+    // handle touch events:
+    // find average point of all active touches
+    // find average distance from midpoint to active touches
+    // for touchmove events only:
+    //   tx += last midpoint midX - current midpoint x
+    //   ty += last midpoint midY - current midpoint y
+    //   update midX, midY to current average midpoint
+    //   tscale *= last average distance (avgD) / current average distance
+    //   update avgD to current average distance
+    // for touchstart/touchend only:
+    //   update midX, midY, avgD; no change in tscale or tx, ty
+    function touchEvent(event) {
+      event.preventDefault();
+      numTouches = event.touches.length;
+      let curMidX = 0, curMidY = 0, curAvgD = 0;
+      if (event.touches.length > 0) {
+        for (let i = 0; i < numTouches; i++) {
+          curMidX += event.touches[i].clientX;
+          curMidY += event.touches[i].clientY;
+        }
+        curMidX /= numTouches;
+        curMidY /= numTouches;
+        for (let i = 0; i < numTouches; i++) {
+          const dx = event.touches[i].clientX - midX;
+          const dy = event.touches[i].clientY - midY;
+          const d = Math.sqrt(dx * dx + dy * dy);
+          curAvgD += d;
+        }
+        curAvgD /= numTouches;
+      }
+
+      if (event.type == "touchend" && !event.touches.length) {
+        console.log("touchend");
+        return;
+      }
+      if (event.type == "touchcancel") {
+        tx = 0;
+        ty = 0;
+        midX = cx;
+        midY = cy;
+        tscale = 1;
+        avgD = 0;
+      }
+      if (event.type == "touchmove") {
+        updateView(curMidX - midX, curMidY - midY, 1);
+        if (numTouches > 1) {
+          updateView(0, 0, curAvgD / avgD, curMidX, curMidY);
+        }
+      }
+      midX = curMidX;
+      midY = curMidY;
+      avgD = curAvgD;
+    }
+    function mouseWheel(event) {
+      event.preventDefault();
+      const x = event.clientX;
+      const y = event.clientY;
+      let s = 1;
+      if (event.ctrlKey) {  // touchpad pinch
+        s = Math.exp(-event.deltaY/20);
+      }
+      let ndy = ySpeed - event.deltaY * 0.000001;
+      if (ndy > -0.01 && ndy < 0.01) {
+        ySpeed = ndy;
+      }
+    }
+    function mouseEvent(event) {
+      event.preventDefault();
+      if (event.type == "mouseleave") {
+        mouseDown = null;
+        mouseMove = null;
+        return;
+      }
+      if (event.type == "mousedown") {
+        mouseDown = event;
+      } else if (event.type == "mousemove") {
+        mouseMove = event;
+        if (mouseDown) {
+          //updateView(event.movementX, event.movementY, 1);
+        }
+      } else {
+        mouseDown = null;
+      }
+    }
+    function resizeCanvas() {
+      let oh = canvas.height;
+      let ot = tSize;
+      canvas.width = innerWidth;
+      canvas.height = innerHeight;
+      if (canvas.height < 320) canvas.height = 320;
+      if (canvas.width < 240) canvas.width = 240;
+      cx = canvas.width / 2;
+      cy = canvas.height / 2;
+      ctx.translate(flipX * canvas.width, flipY * canvas.height);
+      ctx.scale(1 - flipX * 2, 1 - flipY * 2);
+      if (oh > 0 && canvas.height > 0) {
+        let s = canvas.height / oh;
+        tSize *= s;
+      }
+      if (!tSize) { tSize = canvas.height / 10; }
+      if (ot && tSize != ot) {
+        yPos *= tSize / ot;
+      }
+      wBox = hBox = 0;
+      // provide 16x9 guides for resizing window for chromecast
+      if (Math.floor(100 * canvas.width / canvas.height) != 177) {
+        let wguide = canvas.width / 16;
+        let hguide = canvas.height / 9;
+        let guide = (wguide > hguide ? hguide : wguide);
+        wBox = Math.floor((canvas.width - guide * 16) / 2);
+        hBox = Math.floor((canvas.height - guide * 9) / 2);
+        // don't leave any small slivers of letterboxing on edge
+        if (wBox < 3) { wBox = 0; }
+        if (hBox < 3) { hBox = 0; }
+      }
+      updateScroll();
+    }
+    function centerText(text, y) {
+      const t = ctx.measureText(text);
+      ctx.fillText(text, cx - t.width/2, y);
+      return t.width/2;
+    }
+    let spacing = 1.125;
+    let lasttime = 0;
+    let maxHeight = 0;
+    let text = [];
+    const help = 
+      "EPISODE IV\nA NEW PROMPTER\n" +
+      "This is the spot where you can paste new text in to change " +
+      "what is being shown here.\n" +
+      "You can change the speed with the mouse scrollwheel or by " + 
+      "clicking or tapping and dragging up or down.\n" + 
+      "You can use the X and Y buttons to mirror the display in that " + 
+      "direction and the + and - buttons to change the size of the " + 
+      "text being displayed.\n" + 
+      "The pause button will pause and resume the scrolling, and the " +
+      "skip back button will go back to the start of the text.";
+    let msg = help;
+    function updateScroll() {
+      ctx.fillStyle = "#fff";
+      ctx.font = `${tSize}px Roboto, sans-serif`;
+      // wordwrap text for given text size
+      text = [];
+      let lines = msg.split(/\n+/);
+      for (const line of lines) {
+        let w = 0;
+        let m = [];
+        let words = line.split(/\s+/);
+        for (const word of words) {
+          let t = ctx.measureText(word + " ");
+          if (w + t.width > canvas.width * 2 / 4) {
+            text.push(m.join(' '));
+            w = 0;
+            m = [];
+          }
+          w += t.width;
+          m.push(word);
+        }
+        if (m.length > 0) {
+          text.push(m.join(' '));
+        }
+        text.push("");
+      }
+      maxHeight = text.length * tSize * spacing;
+      if (yPos === undefined)
+        yPos = canvas.height + tSize;
+    }
+    function pasteEvent(event) {
+      msg = (event.clipboardData || window.clipboardData).getData('text');
+      updateScroll();
+    }
+
+    function animate(timestamp) {
+      const dt = timestamp - lasttime;
+      lasttime = timestamp;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      if (wBox || hBox) {
+        ctx.save();
+        ctx.fillStyle = "#012";
+        ctx.fillRect(0, 0, canvas.width, hBox);
+        ctx.fillRect(0, canvas.height - hBox, canvas.width, hBox);
+        ctx.fillRect(0, 0, wBox, canvas.height);
+        ctx.fillRect(canvas.width - wBox, 0, wBox, canvas.height);
+        ctx.restore();
+      }
+      if (!paused) {
+        yPos += (ySpeed * tSize) * dt;
+      }
+      if (yPos < -maxHeight) yPos = canvas.height + tSize;
+      if (yPos > canvas.height + tSize) yPos = 1 - maxHeight;
+      for (i = 0; i < text.length; i++) {
+        let y = i * tSize * spacing + yPos;
+        if (y > canvas.height + tSize)
+          break;
+        if (y < 0 || !text[i])
+          continue;
+        centerText(text[i], y);
+      }
+      requestAnimationFrame(animate);
+    }
+    resizeCanvas();
+    animate(0);
+
+    const pfft = {passive:false};
+    window.addEventListener('paste', pasteEvent);
+    window.addEventListener('resize', resizeCanvas);
+    canvas.addEventListener('mouseup', mouseEvent, pfft);
+    canvas.addEventListener('mousedown', mouseEvent, pfft);
+    canvas.addEventListener('mousemove', mouseEvent, pfft);
+    canvas.addEventListener('mouseleave', mouseEvent, pfft);
+    canvas.addEventListener('wheel', mouseWheel, pfft);
+    canvas.addEventListener('scroll', mouseWheel, pfft);
+    canvas.addEventListener('touchstart', touchEvent, pfft);
+    canvas.addEventListener('touchend', touchEvent, pfft);
+    canvas.addEventListener('touchmove', touchEvent, pfft);
+    canvas.addEventListener('touchcancel', touchEvent, pfft);
+ </script>
+
+</body>
+</html>
