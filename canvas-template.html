@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Canvas Template</title>
+    <meta name="description" content="html5 canvas quick-start template" />
+    <meta name="author" content="github.com/nlaredo" />
+    <style>
+     html, body { border:0; margin: 0; height:100%; }
+     canvas { border: 0; margin:0; background:#000; }
+    </style>
+  </head>
+<body>
+  <!-- Global site tag (gtag.js) - Google Analytics -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-J4DSMHX8B7"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+
+    gtag('config', 'G-J4DSMHX8B7');
+  </script>
+  <canvas id='mycanvas'></canvas>
+  <script>
+
+  // global variables
+  const canvas = document.getElementById('mycanvas');
+  const ctx = canvas.getContext('2d');
+  let lastTime = 0, frameCount = 0;
+
+  // desired coordinate space
+  let width = 1280, height = 720;
+
+  let lines;
+
+  class Lines {
+    constructor() {
+      // 0 = clock, 1,2 = line
+      this.r = height / 4;  // radius of clock face
+      // everything starts in the center of the screen
+      let cx = width / 2;
+      let cy = height / 2;
+      this.x = [cx, cx, cx, cx, cx]
+      this.y = [this.r + 10, cy, cy, cy, cy];
+      this.dx = [];
+      this.dy = [];
+      for (let i = 0; i < 5; i++) {
+        this.dx.push(i ? this.randomDelta() : 4);
+        this.dy.push(i ? this.randomDelta() : 4);
+      }
+      this.xyMin = [this.r, 0, 0, 0, 0];
+      this.xMax = [width - this.r, width, width, width, width];
+      this.yMax = [height - this.r, height, height, height, height];
+      this.g = [0.01, 1, 1, 1, 1];
+      this.dt = 16/1000;  // expected seconds between updates
+      this.max = 200;  // max lines drawn per frame
+      this.lines = [];
+    }
+    randomDelta(sign) {
+      let speed = 128 + 128 * Math.random();
+      if (sign === undefined) {
+        sign = Math.random() - 0.5;
+      }
+      return (sign < 0 ? -speed : speed);
+    }
+    update(dt) {
+      // update data for next frame
+      for (let i = 0; i < 5; i++) {
+        this.dy[i] += this.g[i]; // apply weak gravity
+        // move points
+        this.x[i] += this.dx[i] * this.dt;
+        this.y[i] += this.dy[i] * this.dt;
+        // constrain points to screen boundaries
+        if (this.x[i] > this.xMax[i] || this.x[i] < this.xyMin[i]) {
+          this.x[i] -= this.dx[i] * this.dt;
+          this.dx[i] = i ? this.randomDelta(-this.dx[i]) : -this.dx[i];
+          this.dt = dt;  // cache actual seconds between updates
+        }
+        if (this.y[i] > this.yMax[i] || this.y[i] < this.xyMin[i]) {
+          this.y[i] -= this.dy[i] * this.dt;
+          this.dy[i] = i ? this.randomDelta(-this.dy[i]) : -this.dy[i];
+          this.dt = dt;  // cache actual seconds between updates
+        }
+      }
+      // add new line to history, use half of array for each active history
+      this.lines.splice((this.lines.length >> 1) + 1, 0, [this.x[3], this.y[3],
+                       this.x[4], this.y[4], 360 - frameCount % 360]);
+      this.lines.push([this.x[1], this.y[1], this.x[2], this.y[2],
+                       frameCount % 360]);
+      // trim history when it grows too long
+      if (this.lines.length > this.max) {
+        this.lines.splice((this.max >> 1), 1);
+        this.lines.shift();
+      }
+    }
+    xy(a, r) { return [r * Math.cos(a), r * Math.sin(a)]; }
+    hand(a, cx, cy, r, w, color) {
+      const [x, y] = this.xy(a, r);
+      const o = Math.PI / 6;
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(cx, cy, w, a + o, a - o - Math.PI);
+      ctx.arc(cx - 0.25 * x, cy - 0.25 * y, w * 1.25, a + o, a - o);
+      ctx.arc(cx, cy, w, a + o - Math.PI, a - o);
+      ctx.lineTo(cx + x, cy + y);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+    }
+    face(cx, cy, r) {
+      ctx.font = `${this.r * 0.33}px Garamond, serif`;
+      ctx.textBaseline = 'middle';
+      ctx.textAlign = 'center';
+      for (let num = 1; num < 13; num++) {
+        const a = num * Math.PI / 6 - Math.PI / 2;
+        const [x, y] = this.xy(a, r);
+        ctx.fillText(num, cx + x, cy + y);
+        ctx.strokeText(num, cx + x, cy + y);
+      }
+    }
+    clock(x, y, r) {
+      const d = new Date();
+      const h = d.getHours();
+      const m = d.getMinutes();
+      const s = d.getSeconds() + d.getMilliseconds() / 1000;
+      const ah = (h + m / 60 + s / 3600) * Math.PI / 6 - Math.PI / 2;
+      const am = (m + s / 60) * Math.PI / 30 - Math.PI / 2;
+      const as = s * Math.PI / 30 - Math.PI / 2;
+      ctx.save();
+      ctx.fillStyle = '#115';
+      ctx.strokeStyle = '#ff1';
+      this.face(x, y, r * 0.9);
+      this.hand(ah, x, y, r * 0.5, r * 0.04, '#115');
+      this.hand(am, x, y, r * 0.8, r * 0.03, '#115');
+      this.hand(as, x, y, r * 0.8, r * 0.02, '#f00');
+      ctx.restore();
+    }
+    show() {
+    // draw current frame
+      this.lines.forEach(line => {
+        let x1, y1, x2, y2, hue;
+        [x1, y1, x2, y2, hue] = line;
+        ctx.strokeStyle = `hsl(${(frameCount + hue) % 360}, 100%, 50%)`;
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+        ctx.stroke();
+      });
+      this.clock(this.x[0], this.y[0], this.r);
+    }
+  }
+
+  function resizeCanvas() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+
+    // scale coordinates without affecting aspect ratio
+    const sclW = canvas.width / width;
+    const sclH = canvas.height / height;
+    // find minimum canvas scale
+    const sMin = sclW < sclH ? sclW : sclH;
+    // translate desired area to center
+    ctx.translate((canvas.width - sMin * width) / 2,
+                  (canvas.height - sMin * height) / 2);
+    // scale canvas to desired coordinates
+    ctx.scale(sMin, sMin);
+    // make scaled line width appear to be as close to 1 pixel wide as possible
+    ctx.lineWidth = 0.5 / sMin;
+  }
+
+  function draw(timestamp) {
+    // dt = change in time (ms) since last call to draw
+    let dt = timestamp - lastTime;
+    lastTime = timestamp;
+    const frameRate = Math.round(dt > 0 ? 1000 / dt : 0);
+
+    // do a couple things outside of transformed coordinate space
+    const oldMatrix = ctx.getTransform();
+    ctx.resetTransform();
+    // fill full canvas with css background color
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // show current frameRate and frameCount under everything else
+    ctx.fillStyle = '#888';
+    ctx.fillText(`${frameRate}fps [${frameCount}]`, 3, canvas.height - 3);
+    // back to requested scale
+    ctx.setTransform(oldMatrix);
+
+    // update state
+    lines.update(dt * 0.001);
+    // show state
+    lines.show();
+
+    frameCount++;
+    // call draw function next video frame
+    requestAnimationFrame(draw);
+  }
+
+
+  function setup() {
+    // make canvas fill viewable area
+    resizeCanvas();
+
+    // call resizeCanvas() again whenever window is resized
+    window.addEventListener('resize', resizeCanvas);
+
+    // set up initial program state
+    lines = new Lines();
+
+    // schedule a call to draw() next refresh
+    requestAnimationFrame(draw);
+  }
+
+  setup();
+  </script>
+</body>
+</html>
