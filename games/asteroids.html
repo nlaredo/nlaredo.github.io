@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Asteroids</title>
+    <meta name="description" content="1979 asteroids in html5" />
+    <meta name="author" content="github.com/nlaredo" />
+    <style>
+     html, body { border:0; margin: 0; height:100%; }
+     canvas { border: 0; margin:0; background:#000; }
+    </style>
+  </head>
+<body>
+  <!-- Global site tag (gtag.js) - Google Analytics -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-J4DSMHX8B7"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+
+    gtag('config', 'G-J4DSMHX8B7');
+  </script>
+  <canvas id='mycanvas'></canvas>
+  <script>
+
+  // global variables
+  const canvas = document.getElementById('mycanvas');
+  const ctx = canvas.getContext('2d');
+  let lastTime = 0, frameCount = 0;
+
+  // desired coordinate space
+  let width = 1920, height = 1080;
+
+  // vectors based on Ed Logg's drawings found on the internet
+  const vectorShip = [
+    {x:-40, y:32}, {x:56, y:0}, {x:-40, y:-32}, {x:-24, y:-16},
+    {x:-24, y:16}, {x:-40, y:32}
+  ];
+  const vectorA = [
+    {x:0, y:0}, {x:0, y:-2}, {x:1, y:-3}, {x:2, y:-2}, {x:2, y:0},
+    {x:2, y:-1, m:true}, {x:0, y:-1}
+  ];
+  const vectorB = [
+    {x:0, y:0}, {x:0, y:-3}, {x:1.5, y:-3}, {x:2, y:-2.5},
+    {x:2, y:-2}, {x:1.5, y:-1.5,}, {x:0, y:-1.5},
+    {x:1.5, y:-1.5, m:true}, {x:2, y:-1}, {x:2, y:-0.5},
+    {x:1.5, y:0}, {x:0, y:0}
+  ];
+  const vectorC = [ {x:2, y:0}, {x:0, y:0}, {x:0, y:-3}, {x:2, y:-3} ];
+  const vectorD = [
+    {x:0, y:0}, {x:0, y:-3}, {x:1, y:-3}, {x:2, y:-2}, {x:2, y:-1},
+    {x:1, y:0}, {x:0, y:0}
+  ];
+  const vectorE = [
+    {x:2, y:0}, {x:0, y:0}, {x:0, y:-3}, {x:2, y:-3},
+    {x:0, y:-1.5, m:true}, {x:1.5, y:-1.5}
+  ];
+  const vectorF = [
+    {x:0, y:0}, {x:0, y:-3}, {x:2, y:-3},
+    {x:0, y:-1.5, m:true}, {x:1.5, y:-1.5}
+  ];
+  const vectorG = [
+    {x:1, y:-1}, {x:2, y:-1}, {x:2, y:0}, {x:0, y:0}, {x:0, y:-3},
+    {x:2, y:-3}, {x:2, y:-2}
+  ];
+  const vectorH = [
+    {x:0, y:0}, {x:0, y:-3}, {x:2, y:0, m:true}, {x:2, y:-3},
+    {x:0, y:-1.5, m:true}, {x:2, y:-1.5}
+  ];
+  const vectorI = [
+    {x:0, y:0}, {x:2, y:0}, {x:0, y:-3, m:true}, {x:2, y:-3},
+    {x:1, y:0, m:true}, {x:1, y:-3}
+  ];
+  const vectorJ = [ {x:0, y:-1}, {x:1, y:0}, {x:2, y:0}, {x:2, y:-3} ];
+  const vectorK = [
+    {x:0, y:0}, {x:0, y:-3}, {x:2, y:-3, m:true}, {x:0, y:-1.5}, {x:2, y:0}
+  ];
+  const vectorL = [ {x:2, y:0}, {x:0, y:0}, {x:0, y:-3} ];
+  const vectorM = [
+    {x:0, y:0}, {x:0, y:-3}, {x:1, y:-2}, {x:2, y:-3}, {x:2, y:0}
+  ];
+  const vectorN = [
+    {x:0, y:0}, {x:0, y:-3}, {x:2, y:0}, {x:2, y:-3}
+  ];
+  const vectorO = [
+    {x:0, y:0}, {x:0, y:-3}, {x:2, y:-3}, {x:2, y:0}, {x:0, y:0}
+  ];
+  const vectorP = [
+    {x:0, y:0}, {x:0, y:-3}, {x:2, y:-3}, {x:2, y:-1.5}, {x:0, y:-1.5}
+  ];
+  const vectorQ = [
+    {x:0, y:0}, {x:0, y:-3}, {x:2, y:-3}, {x:2, y:-1}, {x:1, y:0},
+    {x:0, y:0}, {x:1, y:-1, m:true}, {x:2, y:0}
+  ];
+  const vectorR = [
+    {x:0, y:0}, {x:0, y:-3}, {x:2, y:-3}, {x:2, y:-1.5}, {x:0, y:-1.5},
+    {x:0.5, y:-1.5, m:true}, {x:2, y:0}
+  ];
+  const vectorS = [
+    {x:0, y:0}, {x:2, y:0}, {x:2, y:-1.5}, {x:0, y:-1.5}, {x:0, y:-3},
+    {x:2, y:-3}
+  ];
+  const vectorT = [
+    {x:1, y:0}, {x:1, y:-3}, {x:0, y:-3, m:true}, {x:2, y:-3}
+  ];
+  const vectorU = [
+    {x:0, y:-3}, {x:0, y:0}, {x:2, y:0}, {x:2, y:-3}
+  ];
+  const vectorV = [
+    {x:0, y:-3}, {x:1, y:0}, {x:2, y:-3}
+  ];
+  const vectorW = [
+    {x:0, y:-3}, {x:0, y:0}, {x:1, y:-1}, {x:2, y:0}, {x:2, y:-3}
+  ];
+  const vectorX = [
+    {x:0, y:0}, {x:2, y:-3}, {x:0, y:-3, m:true}, {x:2, y:0}
+  ];
+  const vectorY = [
+    {x:1, y:0}, {x:1, y:-2}, {x:0, y:-3}, {x:1, y:-2, m:true}, {x:2, y:-3}
+  ];
+  const vectorZ = [ {x:2, y:0}, {x:0, y:0}, {x:2, y:-3}, {x:0, y:-3} ];
+  const vector1 = [ {x:1, y:0}, {x:1, y:-3} ];
+  const vector2 = [
+    {x:2, y:0}, {x:0, y:0}, {x:0, y:-1.5}, {x:2, y:-1.5},
+    {x:2, y:-3}, {x:0, y:-3}
+  ];
+  const vector3 = [
+    {x:0, y:0}, {x:2, y:0}, {x:2, y:-3}, {x:0, y:-3},
+    {x:0, y:-1.5, m:true}, {x:2, y:-1.5}
+  ];
+  const vector4 = [
+    {x:0, y:-3}, {x:0, y:-1.5}, {x:2, y:-1.5},
+    {x:2, y:-3, m:true}, {x:2, y:0}
+  ];
+  const vector5 = [
+    {x:0, y:0}, {x:2, y:0}, {x:2, y:-1.5}, {x:0, y:-1.5},
+    {x:0, y:-3}, {x:2, y:-3}
+  ];
+  const vector6 = [
+    {x:0, y:-3}, {x:0, y:0}, {x:2, y:0}, {x:2, y:-1.5}, {x:0, y:-1.5}
+  ];
+  const vector7 = [ {x:2, y:0}, {x:2, y:-3}, {x:0, y:-3} ];
+  const vector8 = [
+    {x:0, y:0}, {x:0, y:-3}, {x:2, y:-3}, {x:2, y:0}, {x:0, y:0},
+    {x:0, y:-1.5, m:true}, {x:2, y:-1.5}
+  ];
+  const vector9 = [
+    {x:2, y:0}, {x:2, y:-3}, {x:0, y:-3}, {x:0, y:-1.5}, {x:2, y:-1.5}
+  ];
+  const vectorColon = [
+    {x:0.9, y:-1}, {x:1.1, y:-1}, {x:0.9, y:-2, m:true}, {x:1.1, y:-2}
+  ];
+  const vectorUnder = [ {x:0, y:0}, {x:2, y:0} ];
+  const charVectors = [
+    vectorA, vectorB, vectorC, vectorD, vectorE, vectorF, vectorG, vectorH,
+    vectorI, vectorJ, vectorK, vectorL, vectorM, vectorN, vectorO, vectorP,
+    vectorQ, vectorR, vectorS, vectorT, vectorU, vectorV, vectorW, vectorX,
+    vectorY, vectorZ, vectorO, vector1, vector2, vector3, vector4, vector5,
+    vector6, vector7, vector8, vector9, vectorColon, vectorUnder,
+  ];
+
+  function drawVector(v, x, y, angle = 90, scale = 1) {
+    ctx.save();
+    ctx.strokeStyle = '#fff';
+    ctx.translate(x,y);
+    ctx.rotate(angle);
+    ctx.beginPath();
+    for(let i = 0; i < v.length; i++) {
+      if (!i || v[i].m) {
+        ctx.moveTo(scale*v[i].x, scale*v[i].y);
+      } else {
+        ctx.lineTo(scale*v[i].x, scale*v[i].y);
+      }
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+  function resizeCanvas() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+
+    // scale coordinates without affecting aspect ratio
+    const sclW = canvas.width / width;
+    const sclH = canvas.height / height;
+    // find minimum canvas scale
+    const sMin = sclW < sclH ? sclW : sclH;
+    // translate desired area to center
+    ctx.translate((canvas.width - sMin * width) / 2,
+                  (canvas.height - sMin * height) / 2);
+    // scale canvas to desired coordinates
+    ctx.scale(sMin, sMin);
+    // make scaled line width appear to be as close to 1 pixel wide as possible
+    ctx.lineWidth = 0.5 / sMin;
+  }
+
+  let angle = 0;
+  function draw(timestamp) {
+    // dt = change in time (ms) since last call to draw
+    let dt = timestamp - lastTime;
+    lastTime = timestamp;
+    const frameRate = Math.round(dt > 0 ? 1000 / dt : 0);
+
+    // do a couple things outside of transformed coordinate space
+    const oldMatrix = ctx.getTransform();
+    ctx.resetTransform();
+    // fill full canvas with css background color
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // show current frameRate and frameCount under everything else
+    ctx.fillStyle = '#888';
+    ctx.fillText(`${frameRate}fps [${frameCount}]`, 3, canvas.height - 3);
+    // back to requested scale
+    ctx.setTransform(oldMatrix);
+
+    // update state
+    angle += 0.001;
+    // show state
+    drawVector(vectorShip, width/2, height/2, angle, 0.5);
+    for (let i = 0; i < charVectors.length; i++) {
+      drawVector(charVectors[i], 24 + 32 * (i % 10), 48 + 48*Math.floor(i / 10), 0, 24/2);
+    }
+
+    frameCount++;
+    // call draw function next video frame
+    requestAnimationFrame(draw);
+  }
+
+
+  function setup() {
+    // make canvas fill viewable area
+    resizeCanvas();
+
+    // call resizeCanvas() again whenever window is resized
+    window.addEventListener('resize', resizeCanvas);
+
+    // set up initial program state
+
+    // schedule a call to draw() next refresh
+    requestAnimationFrame(draw);
+  }
+
+  setup();
+  </script>
+</body>
+</html>
