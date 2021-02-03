@@ -6,8 +6,13 @@
     <meta name="description" content="1979 asteroids in html5" />
     <meta name="author" content="github.com/nlaredo" />
     <style>
-     html, body { border:0; margin: 0; height:100%; }
-     canvas { border: 0; margin:0; background:#000; }
+     html, body { border:0; margin: 0; padding: 0; height:100%; }
+     canvas {
+       border: 0; margin:0; padding: 0; background: #001;
+       /*background: url('./reference.png') #001 center no-repeat; */
+       background-size: contain;
+       transform-origin: top left;
+     }
     </style>
   </head>
 <body>
@@ -27,137 +32,156 @@
   const canvas = document.getElementById('mycanvas');
   const ctx = canvas.getContext('2d');
   let lastTime = 0, frameCount = 0;
+  let mouseDown = null, mouseMove = null;
+  let touchStart = null, touchMove = null;
+  let game;
 
   // desired coordinate space
-  let width = 1920, height = 1080;
+  // original arcade: width = 1024, height = 760;
+  // increase width for modern 16x9:
+  let width = 1344, height = 760;
+  let ictm, ctm;  // inverse/current transformation matrix
+
+  const TWO_PI = 2 * Math.PI;
+
+  // gameplay scoring constants
+  const SML_ROCK = 100;
+  const MED_ROCK = 50;
+  const LRG_ROCK = 20;
+
+  const SML_SHIP = 1000;
+  const LRG_SHIP = 200;
+
+  const NEW_LIFE = 10000;
+
+  const MAX_LIVES = 10; // max lives to draw before using numbers
+  const FLAMERATE = 0.1;  // seconds per flame flash
+  const ROCK_VECTORS = 12;  // different asteroid shapes to generate
+
+  // gameplay balance constants
+  const MIN_ROCK = 4;  // level 1 starts with this many asteroids
+  const ADD_ROCK = 2;  // add this many asteroids per level
+  const MAKE_SHP = 7;  // max rocks left for saucer spawn
+
+  const ROT_MAG = 5;   // ship rotation speed (vector magnitude)
+  const T_MAG = 250;   // magnitude of thrust vector
+  const V_MAX = 500;   // max velocity vector magnitude
+
+  const SML_SIZE = 10;  // small asteroid radius
+  const MED_SIZE = 20;  // medium asteroid radius
+  const LRG_SIZE = 40;  // large asteroid radius
+
+  const STATE_GAME_OVER = 0;
+  const STATE_HIGH_SCORE = 1;
+  const STATE_DEMO_PLAY = 2;
+  const STATE_PLAYING = 100;
 
   // vectors based on Ed Logg's drawings found on the internet
   const vectorShip = [
-    {x:-40, y:32}, {x:56, y:0}, {x:-40, y:-32}, {x:-24, y:-16},
-    {x:-24, y:16}, {x:-40, y:32}
+    {x:-10, y:8}, {x:14, y:0}, {x:-10, y:-8},
+    {x:-6, y:-4}, {x:-6, y:4}, {x:-10, y:8}
   ];
-  const vectorA = [
-    {x:0, y:0}, {x:0, y:-2}, {x:1, y:-3}, {x:2, y:-2}, {x:2, y:0},
-    {x:2, y:-1, m:true}, {x:0, y:-1}
+  const vectorShipThrust = [
+    {x:-10, y:8}, {x:14, y:0}, {x:-10, y:-8},
+    {x:-6, y:-4}, {x:-6, y:4}, {x:-10, y:8},
+    {x:-6, y:-4, m:true}, {x:-16, y:0}, {x:-6, y:4}
   ];
-  const vectorB = [
-    {x:0, y:0}, {x:0, y:-3}, {x:1.5, y:-3}, {x:2, y:-2.5},
-    {x:2, y:-2}, {x:1.5, y:-1.5,}, {x:0, y:-1.5},
-    {x:1.5, y:-1.5, m:true}, {x:2, y:-1}, {x:2, y:-0.5},
-    {x:1.5, y:0}, {x:0, y:0}
-  ];
-  const vectorC = [ {x:2, y:0}, {x:0, y:0}, {x:0, y:-3}, {x:2, y:-3} ];
-  const vectorD = [
-    {x:0, y:0}, {x:0, y:-3}, {x:1, y:-3}, {x:2, y:-2}, {x:2, y:-1},
-    {x:1, y:0}, {x:0, y:0}
-  ];
-  const vectorE = [
-    {x:2, y:0}, {x:0, y:0}, {x:0, y:-3}, {x:2, y:-3},
-    {x:0, y:-1.5, m:true}, {x:1.5, y:-1.5}
-  ];
-  const vectorF = [
-    {x:0, y:0}, {x:0, y:-3}, {x:2, y:-3},
-    {x:0, y:-1.5, m:true}, {x:1.5, y:-1.5}
-  ];
-  const vectorG = [
-    {x:1, y:-1}, {x:2, y:-1}, {x:2, y:0}, {x:0, y:0}, {x:0, y:-3},
-    {x:2, y:-3}, {x:2, y:-2}
-  ];
-  const vectorH = [
-    {x:0, y:0}, {x:0, y:-3}, {x:2, y:0, m:true}, {x:2, y:-3},
-    {x:0, y:-1.5, m:true}, {x:2, y:-1.5}
-  ];
-  const vectorI = [
-    {x:0, y:0}, {x:2, y:0}, {x:0, y:-3, m:true}, {x:2, y:-3},
-    {x:1, y:0, m:true}, {x:1, y:-3}
-  ];
-  const vectorJ = [ {x:0, y:-1}, {x:1, y:0}, {x:2, y:0}, {x:2, y:-3} ];
-  const vectorK = [
-    {x:0, y:0}, {x:0, y:-3}, {x:2, y:-3, m:true}, {x:0, y:-1.5}, {x:2, y:0}
-  ];
-  const vectorL = [ {x:2, y:0}, {x:0, y:0}, {x:0, y:-3} ];
-  const vectorM = [
-    {x:0, y:0}, {x:0, y:-3}, {x:1, y:-2}, {x:2, y:-3}, {x:2, y:0}
-  ];
-  const vectorN = [
-    {x:0, y:0}, {x:0, y:-3}, {x:2, y:0}, {x:2, y:-3}
-  ];
-  const vectorO = [
-    {x:0, y:0}, {x:0, y:-3}, {x:2, y:-3}, {x:2, y:0}, {x:0, y:0}
-  ];
-  const vectorP = [
-    {x:0, y:0}, {x:0, y:-3}, {x:2, y:-3}, {x:2, y:-1.5}, {x:0, y:-1.5}
-  ];
-  const vectorQ = [
-    {x:0, y:0}, {x:0, y:-3}, {x:2, y:-3}, {x:2, y:-1}, {x:1, y:0},
-    {x:0, y:0}, {x:1, y:-1, m:true}, {x:2, y:0}
-  ];
-  const vectorR = [
-    {x:0, y:0}, {x:0, y:-3}, {x:2, y:-3}, {x:2, y:-1.5}, {x:0, y:-1.5},
-    {x:0.5, y:-1.5, m:true}, {x:2, y:0}
-  ];
-  const vectorS = [
-    {x:0, y:0}, {x:2, y:0}, {x:2, y:-1.5}, {x:0, y:-1.5}, {x:0, y:-3},
-    {x:2, y:-3}
-  ];
-  const vectorT = [
-    {x:1, y:0}, {x:1, y:-3}, {x:0, y:-3, m:true}, {x:2, y:-3}
-  ];
-  const vectorU = [
-    {x:0, y:-3}, {x:0, y:0}, {x:2, y:0}, {x:2, y:-3}
-  ];
-  const vectorV = [
-    {x:0, y:-3}, {x:1, y:0}, {x:2, y:-3}
-  ];
-  const vectorW = [
-    {x:0, y:-3}, {x:0, y:0}, {x:1, y:-1}, {x:2, y:0}, {x:2, y:-3}
-  ];
-  const vectorX = [
-    {x:0, y:0}, {x:2, y:-3}, {x:0, y:-3, m:true}, {x:2, y:0}
-  ];
-  const vectorY = [
-    {x:1, y:0}, {x:1, y:-2}, {x:0, y:-3}, {x:1, y:-2, m:true}, {x:2, y:-3}
-  ];
-  const vectorZ = [ {x:2, y:0}, {x:0, y:0}, {x:2, y:-3}, {x:0, y:-3} ];
-  const vector1 = [ {x:1, y:0}, {x:1, y:-3} ];
-  const vector2 = [
-    {x:2, y:0}, {x:0, y:0}, {x:0, y:-1.5}, {x:2, y:-1.5},
-    {x:2, y:-3}, {x:0, y:-3}
-  ];
-  const vector3 = [
-    {x:0, y:0}, {x:2, y:0}, {x:2, y:-3}, {x:0, y:-3},
-    {x:0, y:-1.5, m:true}, {x:2, y:-1.5}
-  ];
-  const vector4 = [
-    {x:0, y:-3}, {x:0, y:-1.5}, {x:2, y:-1.5},
-    {x:2, y:-3, m:true}, {x:2, y:0}
-  ];
-  const vector5 = [
-    {x:0, y:0}, {x:2, y:0}, {x:2, y:-1.5}, {x:0, y:-1.5},
-    {x:0, y:-3}, {x:2, y:-3}
-  ];
-  const vector6 = [
-    {x:0, y:-3}, {x:0, y:0}, {x:2, y:0}, {x:2, y:-1.5}, {x:0, y:-1.5}
-  ];
-  const vector7 = [ {x:2, y:0}, {x:2, y:-3}, {x:0, y:-3} ];
-  const vector8 = [
-    {x:0, y:0}, {x:0, y:-3}, {x:2, y:-3}, {x:2, y:0}, {x:0, y:0},
-    {x:0, y:-1.5, m:true}, {x:2, y:-1.5}
-  ];
-  const vector9 = [
-    {x:2, y:0}, {x:2, y:-3}, {x:0, y:-3}, {x:0, y:-1.5}, {x:2, y:-1.5}
-  ];
-  const vectorColon = [
-    {x:0.9, y:-1}, {x:1.1, y:-1}, {x:0.9, y:-2, m:true}, {x:1.1, y:-2}
-  ];
-  const vectorUnder = [ {x:0, y:0}, {x:2, y:0} ];
+  let vectorAsteroids = [];  // array of generated asteroids
+  // character size and spacing (4x6 src coordinates):
+  // small size: 8x12 in 12x16 (scale = 2)
+  // medium size: 16x24 in 24x32 (scale = 4, default)
+  // large size: 32x48 in 48x64 (scale = 8)
+  // x = bits 4-6; y = bits 0-3; moveto = bit 7
+  const CHAR_OFFSET = 33;  // ASCII offset
   const charVectors = [
-    vectorA, vectorB, vectorC, vectorD, vectorE, vectorF, vectorG, vectorH,
-    vectorI, vectorJ, vectorK, vectorL, vectorM, vectorN, vectorO, vectorP,
-    vectorQ, vectorR, vectorS, vectorT, vectorU, vectorV, vectorW, vectorX,
-    vectorY, vectorZ, vectorO, vector1, vector2, vector3, vector4, vector5,
-    vector6, vector7, vector8, vector9, vectorColon, vectorUnder,
+  /*
+   *   !"#$%&'()*+,-./0123456789:;<=>?
+   *  @ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_
+   *  `abcdefghijklmnopqrstuvwxyz{|}~
+   */
+    [ 0x2f,0x3f,0x3e,0x2e,0x2f,0xac,0x29 ],  // !
+    [ 0x29,0x1b,0xc9,0x3b ],  // "
+    [ 0x0d,0x4d,0x8b,0x4b,0x8f,0x19,0xaf,0x39 ],  // #
+    [ 0x0e,0x4e,0x4c,0x0c,0x0a,0x4a,0xaf,0x29 ],  // S
+    [ 0x0f,0x49,0x8a,0x1a,0x19,0x09,0x0a,0xbf,0x4f,0x4e,0x3e,0x3f ],  // /
+    [ 0x4f,0x09,0x29,0x0f,0x2f,0x4c ],  // &
+    [ 0x39,0x2b ],  // '
+    [ 0x3f,0x1d,0x1b,0x39 ],  // (
+    [ 0x1f,0x3d,0x3b,0x19 ],  // )
+    [ 0x1c,0x3c,0xad,0x2b,0x9d,0x3b,0xbd,0x1b ],  // *
+    [ 0x0c,0x4c,0xae,0x2a ],  // +
+    [ 0x3d,0x2f ],  // ,
+    [ 0x0c,0x4c ],  // -
+    [ 0x2f,0x3f,0x3e,0x2e,0x2f ],  // .
+    [ 0x49,0x0f ],  // /
+    [ 0x0f,0x09,0x49,0x4f,0x0f ],  // 0
+    [ 0x2f,0x29 ],  // 1
+    [ 0x4f,0x0f,0x0c,0x4c,0x49,0x09 ],  // 2
+    [ 0x0f,0x4f,0x49,0x09,0x8c,0x4c ],  // 3
+    [ 0x09,0x0c,0x4c,0xc9,0x4f ],  // 4
+    [ 0x0f,0x4f,0x4c,0x0c,0x09,0x49 ],  // 5
+    [ 0x09,0x0f,0x4f,0x4c,0x0c ],  // 6
+    [ 0x4f,0x49,0x09 ],  // 7
+    [ 0x0f,0x09,0x49,0x4f,0x0f,0x8c,0x4c ],  // 8
+    [ 0x4f,0x49,0x09,0x0c,0x4c ],  // 9
+    [ 0x2d,0x3d,0x3e,0x2e,0x2d,0xab,0x3b,0x3c,0x2c,0x2b ],  // :
+    [ 0x3d,0x2f,0xab,0x3b,0x3c,0x2c,0x2b ],  // ;
+    [ 0x49, 0x0c, 0x4f ], // <
+    [ 0x0d,0x4d,0x8b,0x4b ],  // =
+    [ 0x09, 0x4c, 0x0f ], // >
+    [ 0x2f,0x3f,0x3e,0x2e,0x2f,0xad,0x2c,0x4c,0x49,0x09 ],  // ?
+    [ 0x0e,0x0a,0x29,0x4a,0x4e,0x2f,0x0e,0xbb,0x1b,0x1d,0x3d ],  // @
+    [ 0x0f,0x0b,0x29,0x4b,0x4f,0xcd,0x0d ],  // A
+    [ 0x0f,0x09,0x39,0x4a,0x4b,0x3c,0x0c,0xbc,0x4d,0x4e,0x3f,0x0f ],  // B
+    [ 0x4f,0x0f,0x09,0x49 ],  // C
+    [ 0x0f,0x09,0x29,0x4b,0x4d,0x2f,0x0f ],  // D
+    [ 0x4f,0x0f,0x09,0x49,0x8c,0x3c ],  // E
+    [ 0x0f,0x09,0x49,0x8c,0x3c ],  // F
+    [ 0x2d,0x4d,0x4f,0x0f,0x09,0x49,0x4b ],  // G
+    [ 0x0f,0x09,0xcf,0x49,0x8c,0x4c ],  // H
+    [ 0x0f,0x4f,0x89,0x49,0xaf,0x29 ],  // I
+    [ 0x0d,0x2f,0x4f,0x49 ],  // J
+    [ 0x0f,0x09,0xc9,0x0c,0x4f ],  // K
+    [ 0x4f,0x0f,0x09 ],  // L
+    [ 0x0f,0x09,0x2b,0x49,0x4f ],  // M
+    [ 0x0f,0x09,0x4f,0x49 ],  // N
+    [ 0x0f,0x09,0x49,0x4f,0x0f ],  // O
+    [ 0x0f,0x09,0x49,0x4c,0x0c ],  // P
+    [ 0x0f,0x09,0x49,0x4d,0x2f,0x0f,0xad,0x4f ],  // Q
+    [ 0x0f,0x09,0x49,0x4c,0x0c,0x9c,0x4f ],  // R
+    [ 0x0f,0x4f,0x4c,0x0c,0x09,0x49 ],  // S
+    [ 0x2f,0x29,0x89,0x49 ],  // T
+    [ 0x09,0x0f,0x4f,0x49 ],  // U
+    [ 0x09,0x2f,0x49 ],  // V
+    [ 0x09,0x0f,0x2d,0x4f,0x49 ],  // W
+    [ 0x0f,0x49,0x89,0x4f ],  // X
+    [ 0x2f,0x2b,0x09,0xab,0x49 ],  // Y
+    [ 0x4f,0x0f,0x49,0x09 ],  // Z
+    [ 0x3f,0x1f,0x19,0x39 ],  // [
+    [ 0x09,0x4f ],  // \
+    [ 0x1f,0x3f,0x39,0x19 ],  // ]
+    [ 0x0c,0x29,0x4c ],  // ^
+    [ 0x0f,0x4f ],  // _
   ];
+  
+  function makeAsteroid() {
+    let points = [];
+    let t = Math.PI * 2 / 9;
+    for(let i = 0; i < 9; i++) {
+      var a = i * t;
+      var r = 2 - Math.random();
+      var x = r * Math.cos(a);
+      var y = r * Math.sin(a);
+      points.push({ x, y });
+    }
+    points.push(points[0]);
+    return points;
+  }
+  function makeAsteroidVectors() {
+    for (let i = 0; i < ROCK_VECTORS; i++) {
+      vectorAsteroids.push(makeAsteroid());
+    }
+  }
 
   function drawVector(v, x, y, angle = 90, scale = 1) {
     ctx.save();
@@ -166,19 +190,54 @@
     ctx.rotate(angle);
     ctx.beginPath();
     for(let i = 0; i < v.length; i++) {
-      if (!i || v[i].m) {
-        ctx.moveTo(scale*v[i].x, scale*v[i].y);
+      if (v[i].x === undefined) {
+        let xpos = ((v[i] & 0x7f) >> 4) * scale;
+        let ypos = ((v[i] & 0xf) - 15) * scale;
+        let m = ((v[i] & 0x80) > 0 || !i);
+        if (m) {
+          ctx.moveTo(xpos, ypos);
+        } else {
+	  ctx.lineTo(xpos, ypos);
+        }
       } else {
-        ctx.lineTo(scale*v[i].x, scale*v[i].y);
+	if (!i || v[i].m) {
+	  ctx.moveTo(scale*v[i].x, scale*v[i].y);
+	} else {
+	  ctx.lineTo(scale*v[i].x, scale*v[i].y);
+	}
       }
     }
     ctx.stroke();
     ctx.restore();
   }
+  function vectorText(str, x, y, s=4) {
+    if (typeof(str) != "string") {
+      str = str.toString();
+    }
+    let o = 0;
+    for (let i = 0; i < str.length; i++) {
+      let c = str.charCodeAt(i);
+      if (c == 10) {
+        y += 8 * s;
+        o = 0;
+        continue;
+      }
+      c -= CHAR_OFFSET;
+      if (c >= charVectors.length) {
+        c -= 32;  // if needed, reuse last 32 for lower case
+      }
+      if (c >= 0 && c < charVectors.length) {
+        drawVector(charVectors[c], x + s * 6 * o, y, 0, s);
+      }
+      o++;
+    }
+  }
   function resizeCanvas() {
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
 
+    ctx.resetTransform();
+    //ctx.rotate(0.02);  // test translation of mouse coordinates
     // scale coordinates without affecting aspect ratio
     const sclW = canvas.width / width;
     const sclH = canvas.height / height;
@@ -191,14 +250,244 @@
     ctx.scale(sMin, sMin);
     // make scaled line width appear to be as close to 1 pixel wide as possible
     ctx.lineWidth = 0.5 / sMin;
+    // get current and inverse of current transformation matrix
+    ctm = ctx.getTransform();
+    ictm = ctm.inverse();
   }
 
-  let angle = 0;
+  class Asteroid {
+    constructor(x, y, r, a, dx, dy) {
+      this.x = x;
+      this.y = y;
+      this.r = r;
+      this.a = a;
+      this.dx = dx;
+      this.dy = dy;
+      this.t = Math.floor(Math.random() * ROCK_VECTORS);
+    }
+    update(dt) {
+      // update asteroid position based on current velocity
+      this.x += this.dx * dt;
+      this.y += this.dy * dt;
+
+      // screen wrapping
+      if (this.x < 0) this.x += width;
+      if (this.y < 0) this.y += height;
+      if (this.x > width) this.x -= width;
+      if (this.y > height) this.y -= height;
+    }
+    show() {
+      drawVector(vectorAsteroids[this.t], this.x, this.y, this.a, this.r);
+    }
+  }
+  class Ship {
+    constructor(x = 0.5 * width, y = 0.5 * height, a = -0.5 * Math.PI,
+                dx = 0, dy = 0) {
+      this.x = x;
+      this.y = y;
+      this.dx = dx;
+      this.dy = dy;
+      this.a = a;
+      this.setForward();
+      // target vector (for mouse based rotation)
+      this.tx = 0;
+      this.ty = 0;
+      this.rot = 0;
+      this.thrust = 0;
+      this.flametick = 0;
+    }
+    normalizeTarget(dx, dy) {
+      let d = Math.sqrt(dx * dx + dy * dy);
+      this.tx = d ? dx / d : 0;
+      this.ty = d ? dy / d : 0;
+    }
+    normalizeForward() {
+      let d = Math.sqrt(this.fx * this.fx + this.fy * this.fy);
+      this.fx = d ? this.fx / d : 0;
+      this.fy = d ? this.fy / d : 0;
+    }
+    setForward() { this.fx = Math.cos(this.a); this.fy = Math.sin(this.a); }
+    setAngle() { this.a = Math.atan2(this.fy, this.fx); }
+    setTarget(x, y) {
+      // setup vector tx,ty for ship to point at
+      this.normalizeTarget(x - this.x, y - this.y);
+    }
+    setTangle(angle) { // set target to forward vector rotated by angle
+      let sa = Math.sin(angle);
+      let ca = Math.cos(angle);
+      this.normalizeTarget(ca * this.fx + sa * this.fy,
+                          -sa * this.fx + ca * this.fy);
+    }
+    setThrust(v) {
+      this.thrust = v;
+    }
+    setRotate(d) {
+      this.rot = !this.rot ? 0.05 * d : Math.abs(this.rot) * d;
+    }
+    update(dt) {
+      if (this.thrust) {
+        this.dx += T_MAG * this.fx * dt;
+        this.dy += T_MAG * this.fy * dt;
+        let d = this.dx * this.dx + this.dy * this.dy;
+        if (d > V_MAX * V_MAX) {
+          // normalize velocity to max magnitude
+          d = Math.sqrt(d);
+          this.dx = V_MAX * this.dx / d;
+          this.dy = V_MAX * this.dy / d;
+        }
+        // update timer for flame flashing
+        this.flametick += dt;
+        this.flametick %= FLAMERATE;  // seconds per flame cycle
+      }
+
+      // update ship position based on current velocity
+      this.x += this.dx * dt;
+      this.y += this.dy * dt;
+
+      // lose 1/8 of velocity every second
+      this.dx -= 0.125 * this.dx * dt;
+      this.dy -= 0.125 * this.dy * dt;
+
+      // screen wrapping
+      if (this.x < 0) this.x += width;
+      if (this.y < 0) this.y += height;
+      if (this.x > width) this.x -= width;
+      if (this.y > height) this.y -= height;
+
+      // handle any keyboard rotation
+      if (this.rot) {
+        if (Math.abs(this.rot) < 1) {
+          this.rot *= 1.1;
+        }
+        this.setTangle(this.rot);
+      }
+
+      // make forward vector approach target vector smoothly
+      if (this.tx || this.ty) {
+        this.fx += ROT_MAG * this.tx * dt;
+        this.fy += ROT_MAG * this.ty * dt;
+        // normalize vector
+        this.normalizeForward();
+        if (Math.round(this.tx * 256) == Math.round(this.fx * 256) &&
+            Math.round(this.ty * 256) == Math.round(this.fy * 256)) {
+          this.ty = this.tx = 0;  // rotation completed
+        }
+        this.setAngle();
+      }
+    }
+    show() {
+      drawVector(this.thrust && (this.flametick < 0.5 * FLAMERATE) ?
+                 vectorShipThrust : vectorShip, this.x, this.y, this.a);
+    }
+  }
+  class Game {
+    constructor() {
+      // load any game state in progress / high scores / etc
+      const loaded = JSON.parse(localStorage.getItem('gameState')) || Object;
+      // sanitize saved state, if any
+      this.highScore = loaded.highStore || 100;
+      if (this.highScore < 100) this.highScore = 100;
+      this.topTen = loaded.topTen ||  [{ score:100, name: "NIL" }];
+      this.lives = loaded.lives || 0;
+      this.level = loaded.level || 0;
+      this.asteroids = loaded.asteroids;
+      this.state = loaded.state || STATE_GAME_OVER;
+      this.score = loaded.score || 0;
+      this.highScore = loaded.highScore || 100;
+      if (this.lives < 0 || this.level < 1 || !this.asteroids ||
+          this.state != STATE_PLAYING) {
+        this.newGame();
+      }
+    }
+    saveState() {
+      localStorage.setItem('gameState', JSON.stringify(this));
+    }
+    newGame() {
+      this.lives = 3;
+      this.level = 1;
+      this.score = 0;
+      this.ship = new Ship();
+      this.asteroidsLeft = 0;
+      this.asteroids = [];
+      for (let i = 0; i < MIN_ROCK; i++) {
+        let a = Math.random() * 2 * Math.PI;
+        let d = Math.random() * 300 + 50;
+        let v = Math.random() * 150 + 50;
+        let dx = v * Math.cos(a);
+        let dy = v * Math.sin(a);
+        let x = width / 2 + d * Math.cos(a);
+        let y = height / 2 + d * Math.sin(a);
+        this.asteroids.push(new Asteroid(x, y, LRG_SIZE, a, dx, dy));
+      }
+    }
+    update(dt) {
+      this.ship.update(dt);
+      this.asteroids.forEach(a => a.update(dt));
+    }
+    show() {
+      this.ship.show();
+      this.asteroids.forEach(a => a.show());
+    }
+  }
+
+  function touchEvent(event) {
+    event.preventDefault();
+    if (event.type == "touchstart" && touchStart == null) {
+      touchStart = event;
+    }
+    if (event.type == "touchend" && touchStart && touchStart.id == event.id) {
+      touchStart = null;
+      touchMove = null;
+    }
+    if (event.type == "touchcancel") {
+      touchStart = null;
+      touchMove = null;
+    }
+    if (event.type == "touchmove") {
+      if (!touchMove || touchMove.id == event.id) {
+        touchMove = event;
+      }
+    }
+  }
+
+  function mouseEvent(event) {
+    event.preventDefault();
+    // mouse events seem to come "native" when canvas is transformed
+    // apply inverted canvas transformation matrix to mouse coordinates
+    let x = event.clientX * ictm.a + event.clientY * ictm.c + ictm.e;
+    let y = event.clientX * ictm.b + event.clientY * ictm.d + ictm.f;
+    if (event.type == "mouseleave") {
+      mouseDown = null;
+      mouseMove = null;
+      return;
+    } else if (event.type == "mousedown") {
+      mouseDown = { x, y };
+      console.log(mouseDown);
+    } else if (event.type == "mousemove") {
+      game.ship.setTarget(x, y);
+      mouseMove = { x, y };
+    } else {
+      mouseDown = null;
+    }
+  }
+  function keyEvent(event) {
+    event.preventDefault();
+    if (event.code == "ArrowUp" || event.code == "KeyW") {
+      game.ship.setThrust(event.type == "keyup" ? 0 : 1);
+    }
+    if (event.code == "ArrowRight" || event.code == "KeyD") {
+      game.ship.setRotate(event.type == "keyup" ? 0 : -1);
+    }
+    if (event.code == "ArrowLeft" || event.code == "KeyA") {
+      game.ship.setRotate(event.type == "keyup" ? 0 : 1);
+    }
+  }
+
   function draw(timestamp) {
-    // dt = change in time (ms) since last call to draw
-    let dt = timestamp - lastTime;
+    // dt = change in time (seconds) since last call to draw
+    let dt = 0.001 * (timestamp - lastTime);
     lastTime = timestamp;
-    const frameRate = Math.round(dt > 0 ? 1000 / dt : 0);
+    const frameRate = Math.round(dt > 0 ? 1 / dt : 0);
 
     // do a couple things outside of transformed coordinate space
     const oldMatrix = ctx.getTransform();
@@ -212,12 +501,33 @@
     // back to requested scale
     ctx.setTransform(oldMatrix);
 
-    // update state
-    angle += 0.001;
-    // show state
-    drawVector(vectorShip, width/2, height/2, angle, 0.5);
-    for (let i = 0; i < charVectors.length; i++) {
-      drawVector(charVectors[i], 24 + 32 * (i % 10), 48 + 48*Math.floor(i / 10), 0, 24/2);
+    // update game state
+    game.update(dt);
+
+    // show game state
+    game.show();
+    vectorText(`${game.score}`, 318, 30);
+    vectorText(`${game.highScore}`, 676, 30, 2);
+
+    // show ships remaining at the top of screen up to MAX_LIVES
+    for (let i = 0; i < game.lives && i < MAX_LIVES; i++) {
+      drawVector(vectorShip, 330 + i * 16, 52, -0.5 * Math.PI);
+    }
+    // draw text after row of ships for remainder over MAX_LIVES
+    if (game.lives > MAX_LIVES) {
+      vectorText(`+${game.lives - MAX_LIVES}`, 330 + MAX_LIVES * 16, 52, 2);
+    }
+    vectorText("@2021 NIL", 600, 752, 2);
+
+    // crosshairs for mouse tracking
+    if (mouseMove != null) {
+      ctx.strokeStyle = "#fff";
+      ctx.beginPath();
+      ctx.moveTo(mouseMove.x-4, mouseMove.y-4);
+      ctx.lineTo(mouseMove.x+4, mouseMove.y+4);
+      ctx.moveTo(mouseMove.x-4, mouseMove.y+4);
+      ctx.lineTo(mouseMove.x+4, mouseMove.y-4);
+      ctx.stroke();
     }
 
     frameCount++;
@@ -225,15 +535,29 @@
     requestAnimationFrame(draw);
   }
 
-
   function setup() {
     // make canvas fill viewable area
     resizeCanvas();
 
     // call resizeCanvas() again whenever window is resized
+    const pfft = {passive:false};
     window.addEventListener('resize', resizeCanvas);
+    // attach handlers for mouse/touch/keyboard events
+    window.addEventListener('keydown', keyEvent);
+    window.addEventListener('keyup', keyEvent);
+    canvas.addEventListener('mouseup', mouseEvent, pfft);
+    canvas.addEventListener('mousedown', mouseEvent, pfft);
+    canvas.addEventListener('mousemove', mouseEvent, pfft);
+    canvas.addEventListener('mouseleave', mouseEvent, pfft);
+    canvas.addEventListener('touchstart', touchEvent, pfft);
+    canvas.addEventListener('touchend', touchEvent, pfft);
+    canvas.addEventListener('touchmove', touchEvent, pfft);
+    canvas.addEventListener('touchcancel', touchEvent, pfft);
 
     // set up initial program state
+    makeAsteroidVectors();  // generate random asteroid drawings
+    game = new Game();
+    console.log(game);
 
     // schedule a call to draw() next refresh
     requestAnimationFrame(draw);
