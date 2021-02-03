@@ -394,7 +394,7 @@
       this.lives = loaded.lives || 0;
       this.level = loaded.level || 0;
       this.asteroids = [];
-      if (loaded.asteroids.length > 0) {
+      if (loaded.asteroids && loaded.asteroids.length > 0) {
         loaded.asteroids.forEach(a => this.asteroids.push(
                 new Asteroid(a.x, a.y, a.r, a.a, a.dx, a.dy)));
       }
