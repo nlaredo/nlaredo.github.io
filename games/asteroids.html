@@ -32,8 +32,8 @@
   const canvas = document.getElementById('mycanvas');
   const ctx = canvas.getContext('2d');
   let lastTime = 0, frameCount = 0;
-  let mouseDown = null, mouseMove = null;
-  let touchStart = null, touchMove = null;
+  let mousePos = null;
+  let touchStart = null;
   let game;
 
   // desired coordinate space
@@ -324,6 +324,9 @@
     setRotate(d) {
       this.rot = !this.rot ? 0.05 * d : Math.abs(this.rot) * d;
     }
+    fire() {
+      // TODO: emit from forward vector; affected by velocity vector?
+    }
     update(dt) {
       if (this.thrust) {
         this.dx += T_MAG * this.fx * dt;
@@ -390,12 +393,20 @@
       this.topTen = loaded.topTen ||  [{ score:100, name: "NIL" }];
       this.lives = loaded.lives || 0;
       this.level = loaded.level || 0;
-      this.asteroids = loaded.asteroids;
+      this.asteroids = [];
+      if (loaded.asteroids.length > 0) {
+        loaded.asteroids.forEach(a => this.asteroids.push(
+                new Asteroid(a.x, a.y, a.r, a.a, a.dx, a.dy)));
+      }
+      if (loaded.ship) {
+        this.ship = new Ship(loaded.ship.x, loaded.ship.y, loaded.ship.a,
+                loaded.ship.dx, loaded.ship.dy);
+      }
       this.state = loaded.state || STATE_GAME_OVER;
       this.score = loaded.score || 0;
       this.highScore = loaded.highScore || 100;
       if (this.lives < 0 || this.level < 1 || !this.asteroids ||
-          this.state != STATE_PLAYING) {
+          (0 && this.state != STATE_PLAYING) || !this.ship) {
         this.newGame();
       }
     }
@@ -429,24 +440,22 @@
       this.asteroids.forEach(a => a.show());
     }
   }
+  function unloadEvent(event) {
+    game.saveState();
+  }
 
   function touchEvent(event) {
     event.preventDefault();
+    const e = event.changedTouches[0];
+    const x = e.clientX * ictm.a + e.clientY * ictm.c + ictm.e;
+    const y = e.clientX * ictm.b + e.clientY * ictm.d + ictm.f;
+    mousePos = { x, y };
+    game.ship.setTarget(x, y);
     if (event.type == "touchstart" && touchStart == null) {
       touchStart = event;
     }
-    if (event.type == "touchend" && touchStart && touchStart.id == event.id) {
-      touchStart = null;
-      touchMove = null;
-    }
-    if (event.type == "touchcancel") {
-      touchStart = null;
-      touchMove = null;
-    }
-    if (event.type == "touchmove") {
-      if (!touchMove || touchMove.id == event.id) {
-        touchMove = event;
-      }
+    if (event.type == "touchcancel" || event.type == "touchend") {
+      mousePos = null;
     }
   }
 
@@ -454,25 +463,22 @@
     event.preventDefault();
     // mouse events seem to come "native" when canvas is transformed
     // apply inverted canvas transformation matrix to mouse coordinates
-    let x = event.clientX * ictm.a + event.clientY * ictm.c + ictm.e;
-    let y = event.clientX * ictm.b + event.clientY * ictm.d + ictm.f;
-    if (event.type == "mouseleave") {
-      mouseDown = null;
-      mouseMove = null;
+    const x = event.clientX * ictm.a + event.clientY * ictm.c + ictm.e;
+    const y = event.clientX * ictm.b + event.clientY * ictm.d + ictm.f;
+    mousePos = { x, y };
+    game.ship.setTarget(x, y);
+    if (event.type == "mouseleave" || event.type == "mouseup") {
+      mousePos = null;
       return;
-    } else if (event.type == "mousedown") {
-      mouseDown = { x, y };
-      console.log(mouseDown);
-    } else if (event.type == "mousemove") {
-      game.ship.setTarget(x, y);
-      mouseMove = { x, y };
-    } else {
-      mouseDown = null;
+    }
+    if (event.type == "mousedown") {
+      game.ship.fire();
     }
   }
   function keyEvent(event) {
     event.preventDefault();
-    if (event.code == "ArrowUp" || event.code == "KeyW") {
+    if (event.code == "ArrowUp" || event.code == "KeyW" ||
+        event.code == "AltLeft" || event.code == "AltRight") {
       game.ship.setThrust(event.type == "keyup" ? 0 : 1);
     }
     if (event.code == "ArrowRight" || event.code == "KeyD") {
@@ -480,6 +486,9 @@
     }
     if (event.code == "ArrowLeft" || event.code == "KeyA") {
       game.ship.setRotate(event.type == "keyup" ? 0 : 1);
+    }
+    if (event.code == "ControlLeft" || event.code == "ControlRight") {
+      game.ship.fire();
     }
   }
 
@@ -520,13 +529,13 @@
     vectorText("@2021 NIL", 600, 752, 2);
 
     // crosshairs for mouse tracking
-    if (mouseMove != null) {
+    if (mousePos != null) {
       ctx.strokeStyle = "#fff";
       ctx.beginPath();
-      ctx.moveTo(mouseMove.x-4, mouseMove.y-4);
-      ctx.lineTo(mouseMove.x+4, mouseMove.y+4);
-      ctx.moveTo(mouseMove.x-4, mouseMove.y+4);
-      ctx.lineTo(mouseMove.x+4, mouseMove.y-4);
+      ctx.moveTo(mousePos.x-4, mousePos.y-4);
+      ctx.lineTo(mousePos.x+4, mousePos.y+4);
+      ctx.moveTo(mousePos.x-4, mousePos.y+4);
+      ctx.lineTo(mousePos.x+4, mousePos.y-4);
       ctx.stroke();
     }
 
@@ -542,6 +551,7 @@
     // call resizeCanvas() again whenever window is resized
     const pfft = {passive:false};
     window.addEventListener('resize', resizeCanvas);
+    window.addEventListener('beforeunload', unloadEvent);
     // attach handlers for mouse/touch/keyboard events
     window.addEventListener('keydown', keyEvent);
     window.addEventListener('keyup', keyEvent);
