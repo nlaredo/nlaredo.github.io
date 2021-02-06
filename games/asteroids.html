@@ -9,9 +9,10 @@
      html, body { border:0; margin: 0; padding: 0; height:100%; }
      canvas {
        border: 0; margin:0; padding: 0; background: #001;
-       /*background: url('./reference.png') #001 center no-repeat; */
+       /*background: url('./reference.png') #001 center no-repeat;*/
        background-size: contain;
        transform-origin: top left;
+       cursor: none;
      }
     </style>
   </head>
@@ -34,6 +35,7 @@
   let lastTime = 0, frameCount = 0;
   let mousePos = null;
   let touchStart = null;
+  let debug = false;
   let game;
 
   // desired coordinate space
@@ -59,22 +61,25 @@
   const ROCK_VECTORS = 12;  // different asteroid shapes to generate
 
   // gameplay balance constants
+  const P_LIFETIME = 3;  // particle lifetime in seconds
   const MIN_ROCK = 4;  // level 1 starts with this many asteroids
   const ADD_ROCK = 2;  // add this many asteroids per level
   const MAKE_SHP = 7;  // max rocks left for saucer spawn
 
   const ROT_MAG = 5;   // ship rotation speed (vector magnitude)
   const T_MAG = 250;   // magnitude of thrust vector
+  const P_MAG = 300;   // base magnitude of particle vector
   const V_MAX = 500;   // max velocity vector magnitude
 
-  const SML_SIZE = 10;  // small asteroid radius
-  const MED_SIZE = 20;  // medium asteroid radius
-  const LRG_SIZE = 40;  // large asteroid radius
+  const SML_SIZE = 8;  // small asteroid radius
+  const MED_SIZE = 16;  // medium asteroid radius
+  const LRG_SIZE = 32;  // large asteroid radius
 
-  const STATE_GAME_OVER = 0;
-  const STATE_HIGH_SCORE = 1;
-  const STATE_DEMO_PLAY = 2;
-  const STATE_PLAYING = 100;
+  const STATE_GAME_OVER = 1;
+  const STATE_HIGH_SCORE = 2;
+  const STATE_DEMO_PLAY = 4;
+  const STATE_PLAYING = 8;
+  const STATE_PAUSED = 16;
 
   // vectors based on Ed Logg's drawings found on the internet
   const vectorShip = [
@@ -84,7 +89,10 @@
   const vectorShipThrust = [
     {x:-10, y:8}, {x:14, y:0}, {x:-10, y:-8},
     {x:-6, y:-4}, {x:-6, y:4}, {x:-10, y:8},
-    {x:-6, y:-4, m:true}, {x:-16, y:0}, {x:-6, y:4}
+    {x:-6, y:-4, m:true}, {x:-14, y:0}, {x:-6, y:4}
+  ];
+  const vectorParticle = [
+    {x:-1,y:-1}, {x:1,y:-1}, {x:1,y:1}, {x:-1,y:1}, {x:-1,y:-1}
   ];
   let vectorAsteroids = [];  // array of generated asteroids
   // character size and spacing (4x6 src coordinates):
@@ -166,10 +174,10 @@
   
   function makeAsteroid() {
     let points = [];
-    let t = Math.PI * 2 / 9;
-    for(let i = 0; i < 9; i++) {
+    let t = Math.PI * 2 / 12;
+    for(let i = 0; i < 12; i++) {
       var a = i * t;
-      var r = 2 - Math.random();
+      var r = 1 - 0.67 * Math.random() * (i % 3 ? 0.125 : 1);
       var x = r * Math.cos(a);
       var y = r * Math.sin(a);
       points.push({ x, y });
@@ -248,11 +256,11 @@
                   (canvas.height - sMin * height) / 2);
     // scale canvas to desired coordinates
     ctx.scale(sMin, sMin);
-    // make scaled line width appear to be as close to 1 pixel wide as possible
-    ctx.lineWidth = 0.5 / sMin;
     // get current and inverse of current transformation matrix
     ctm = ctx.getTransform();
     ictm = ctm.inverse();
+    // make scaled line width appear to be as close to 1 pixel wide as possible
+    ctx.lineWidth = ictm.a;
   }
 
   class Asteroid {
@@ -261,14 +269,17 @@
       this.y = y;
       this.r = r;
       this.a = a;
+      this.da = Math.random() * 0.01 - 0.005;
       this.dx = dx;
       this.dy = dy;
       this.t = Math.floor(Math.random() * ROCK_VECTORS);
+      this.broken = false;
     }
     update(dt) {
       // update asteroid position based on current velocity
       this.x += this.dx * dt;
       this.y += this.dy * dt;
+      this.a += this.da;
 
       // screen wrapping
       if (this.x < 0) this.x += width;
@@ -276,7 +287,31 @@
       if (this.x > width) this.x -= width;
       if (this.y > height) this.y -= height;
     }
+    hit(x, y, r) {
+      if (this.broken)
+        return false;  // skip ones already hit
+      const dx = this.x - x;
+      const dy = this.y - y;
+      const dr = this.r + r;
+      const dsquared = dx * dx + dy * dy;
+      this.broken = (dsquared < dr * dr);
+      return this.broken;
+    }
     show() {
+      if (debug) {
+        ctx.save();
+        ctx.strokeStyle = "#0f0";
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.r, 0, TWO_PI);
+        ctx.stroke();
+
+        ctx.strokeStyle = "#00f";
+        ctx.beginPath();
+        ctx.moveTo(this.x, this.y);
+        ctx.lineTo(this.x + this.dx, this.y + this.dy);
+        ctx.stroke();
+        ctx.restore();
+      }
       drawVector(vectorAsteroids[this.t], this.x, this.y, this.a, this.r);
     }
   }
@@ -289,11 +324,9 @@
       this.dy = dy;
       this.a = a;
       this.setForward();
-      // target vector (for mouse based rotation)
-      this.tx = 0;
-      this.ty = 0;
       this.rot = 0;
       this.thrust = 0;
+      this.firing = 0;
       this.flametick = 0;
     }
     normalizeTarget(dx, dy) {
@@ -306,26 +339,36 @@
       this.fx = d ? this.fx / d : 0;
       this.fy = d ? this.fy / d : 0;
     }
-    setForward() { this.fx = Math.cos(this.a); this.fy = Math.sin(this.a); }
+    setForward() {
+      this.fx = Math.cos(this.a);
+      this.fy = Math.sin(this.a);
+      // target vector (for mouse based rotation)
+      this.tx = 0;
+      this.ty = 0;
+    }
     setAngle() { this.a = Math.atan2(this.fy, this.fx); }
     setTarget(x, y) {
       // setup vector tx,ty for ship to point at
       this.normalizeTarget(x - this.x, y - this.y);
     }
-    setTangle(angle) { // set target to forward vector rotated by angle
-      let sa = Math.sin(angle);
-      let ca = Math.cos(angle);
-      this.normalizeTarget(ca * this.fx + sa * this.fy,
-                          -sa * this.fx + ca * this.fy);
-    }
     setThrust(v) {
       this.thrust = v;
     }
     setRotate(d) {
-      this.rot = !this.rot ? 0.05 * d : Math.abs(this.rot) * d;
+      this.rot = d;
     }
-    fire() {
-      // TODO: emit from forward vector; affected by velocity vector?
+    fire(firing) {
+      // prevent key repeat
+      if (this.firing == firing) {
+        return;
+      }
+      this.firing = firing;
+      if (this.firing) {
+        game.particles.push(new Particle(this.x + this.fx * 20,
+                            this.y + this.fy * 20,
+                            this.fx * P_MAG + this.dx,
+                            this.fy * P_MAG + this.dy, true));
+      }
     }
     update(dt) {
       if (this.thrust) {
@@ -359,10 +402,10 @@
 
       // handle any keyboard rotation
       if (this.rot) {
-        if (Math.abs(this.rot) < 1) {
-          this.rot *= 1.1;
-        }
-        this.setTangle(this.rot);
+        // handle as if update rate is 30fps
+        // original rotated by PI / 32 radians per step
+        this.a += this.rot * Math.PI * 0.03125 * dt * 30;
+        this.setForward();
       }
 
       // make forward vector approach target vector smoothly
@@ -371,16 +414,52 @@
         this.fy += ROT_MAG * this.ty * dt;
         // normalize vector
         this.normalizeForward();
-        if (Math.round(this.tx * 256) == Math.round(this.fx * 256) &&
-            Math.round(this.ty * 256) == Math.round(this.fy * 256)) {
+        if (Math.round(this.tx * 32) == Math.round(this.fx * 32) &&
+            Math.round(this.ty * 32) == Math.round(this.fy * 32)) {
           this.ty = this.tx = 0;  // rotation completed
         }
         this.setAngle();
       }
     }
     show() {
+      if (debug) {
+        ctx.save();
+        ctx.strokeStyle = "#f00";
+        ctx.beginPath();
+        ctx.moveTo(this.x, this.y);
+        ctx.lineTo(this.x + 32 * this.tx, this.y + 32 * this.ty);
+        ctx.stroke();
+        ctx.strokeStyle = "#00f";
+        ctx.beginPath();
+        ctx.moveTo(this.x, this.y);
+        ctx.lineTo(this.x + this.dx, this.y + this.dy);
+        ctx.stroke();
+        ctx.restore();
+      }
       drawVector(this.thrust && (this.flametick < 0.5 * FLAMERATE) ?
                  vectorShipThrust : vectorShip, this.x, this.y, this.a);
+    }
+  }
+  class Particle {
+    constructor(x, y, dx, dy, friendly) {
+      this.x = x;
+      this.y = y;
+      this.dx = dx;
+      this.dy = dy;
+      this.friendly = friendly;  // friendly=true will not damage player
+      this.lifetime = P_LIFETIME;
+    }
+    update(dt) {
+      this.x += this.dx * dt;
+      this.y += this.dy * dt;
+      this.lifetime -= dt;
+      if (this.x < 0) this.x += width;
+      if (this.y < 0) this.y += height;
+      if (this.x > width) this.x -= width;
+      if (this.y > height) this.y -= height;
+    }
+    show() {
+      drawVector(vectorParticle, this.x, this.y, 0, 0.5);
     }
   }
   class Game {
@@ -394,6 +473,7 @@
       this.lives = loaded.lives || 0;
       this.level = loaded.level || 0;
       this.asteroids = [];
+      this.particles = [];
       if (loaded.asteroids && loaded.asteroids.length > 0) {
         loaded.asteroids.forEach(a => this.asteroids.push(
                 new Asteroid(a.x, a.y, a.r, a.a, a.dx, a.dy)));
@@ -406,23 +486,26 @@
       this.score = loaded.score || 0;
       this.highScore = loaded.highScore || 100;
       if (this.lives < 0 || this.level < 1 || !this.asteroids ||
-          (0 && this.state != STATE_PLAYING) || !this.ship) {
+          this.asteroids.length < 1 || (this.state & STATE_GAME_OVER) ||
+          !this.ship) {
         this.newGame();
       }
     }
     saveState() {
       localStorage.setItem('gameState', JSON.stringify(this));
     }
-    newGame() {
-      this.lives = 3;
-      this.level = 1;
-      this.score = 0;
-      this.ship = new Ship();
-      this.asteroidsLeft = 0;
-      this.asteroids = [];
-      for (let i = 0; i < MIN_ROCK; i++) {
+    pause(s) {
+      if (s) {
+        game.state |= STATE_PAUSED;
+      } else {
+        game.state &= ~STATE_PAUSED;
+      }
+    }
+    paused() { return game.state & STATE_PAUSED; }
+    newLevel() {
+      for (let i = 0; i < MIN_ROCK + ADD_ROCK * (this.level - 1); i++) {
         let a = Math.random() * 2 * Math.PI;
-        let d = Math.random() * 300 + 50;
+        let d = Math.random() * 300 + 100;
         let v = Math.random() * 150 + 50;
         let dx = v * Math.cos(a);
         let dy = v * Math.sin(a);
@@ -431,13 +514,64 @@
         this.asteroids.push(new Asteroid(x, y, LRG_SIZE, a, dx, dy));
       }
     }
+    newGame() {
+      this.lives = 3;
+      this.level = 1;
+      this.score = 0;
+      this.ship = new Ship();
+      this.asteroidsLeft = 0;
+      this.asteroids = [];
+      this.newLevel();
+    }
     update(dt) {
       this.ship.update(dt);
       this.asteroids.forEach(a => a.update(dt));
+      this.particles.forEach(p => p.update(dt));
+      // check every particle against every asteroid
+      this.particles.forEach(p => {
+        this.asteroids.forEach(a => {
+          const hit = a.hit(p.x, p.y, 2);
+          if (hit) {
+            p.lifetime = 0;
+            // get impact vector
+            const dx = a.x - p.x;
+            const dy = a.y - p.y;
+            switch(a.r) {
+              case SML_SIZE:
+                game.score += p.friendly ? SML_ROCK : 0;
+                break;
+              case MED_SIZE:
+                game.score += p.friendly ? MED_ROCK : 0;
+                // make two small sized rocks
+                this.asteroids.push(new Asteroid(a.x, a.y, SML_SIZE, a.a,
+                                    a.dx + dx, a.dy - dy));
+                this.asteroids.push(new Asteroid(a.x, a.y, SML_SIZE, a.a,
+                                    a.dx - dx, a.dy + dy));
+                break;
+              case LRG_SIZE:
+                game.score += p.friendly ? LRG_ROCK : 0;
+                // make two medium sized rocks
+                this.asteroids.push(new Asteroid(a.x, a.y, MED_SIZE, a.a,
+                                    a.dx + dx, a.dy - dy));
+                this.asteroids.push(new Asteroid(a.x, a.y, MED_SIZE, a.a,
+                                    a.dx - dx, a.dy + dy));
+                break;
+            }
+          }
+        });
+      });
+      // remove old particles
+      this.particles = this.particles.filter(p => p.lifetime > 0);
+      this.asteroids = this.asteroids.filter(a => !a.broken);
+      if (this.asteroids.length < 1) {
+        this.level++;
+        this.newLevel();
+      }
     }
     show() {
       this.ship.show();
       this.asteroids.forEach(a => a.show());
+      this.particles.forEach(p => p.show());
     }
   }
   function unloadEvent(event) {
@@ -445,6 +579,7 @@
   }
 
   function touchEvent(event) {
+    game.pause(0);
     event.preventDefault();
     const e = event.changedTouches[0];
     const x = e.clientX * ictm.a + e.clientY * ictm.c + ictm.e;
@@ -460,6 +595,7 @@
   }
 
   function mouseEvent(event) {
+    game.pause(0);
     event.preventDefault();
     // mouse events seem to come "native" when canvas is transformed
     // apply inverted canvas transformation matrix to mouse coordinates
@@ -469,26 +605,29 @@
     game.ship.setTarget(x, y);
     if (event.type == "mouseleave" || event.type == "mouseup") {
       mousePos = null;
+      game.ship.fire(0);
       return;
     }
     if (event.type == "mousedown") {
-      game.ship.fire();
+      game.ship.fire(1);
+      console.log(x, y);
     }
   }
   function keyEvent(event) {
+    game.pause(0);
     event.preventDefault();
     if (event.code == "ArrowUp" || event.code == "KeyW" ||
         event.code == "AltLeft" || event.code == "AltRight") {
       game.ship.setThrust(event.type == "keyup" ? 0 : 1);
     }
     if (event.code == "ArrowRight" || event.code == "KeyD") {
-      game.ship.setRotate(event.type == "keyup" ? 0 : -1);
-    }
-    if (event.code == "ArrowLeft" || event.code == "KeyA") {
       game.ship.setRotate(event.type == "keyup" ? 0 : 1);
     }
+    if (event.code == "ArrowLeft" || event.code == "KeyA") {
+      game.ship.setRotate(event.type == "keyup" ? 0 : -1);
+    }
     if (event.code == "ControlLeft" || event.code == "ControlRight") {
-      game.ship.fire();
+      game.ship.fire(event.type == "keyup" ? 0 : 1);
     }
   }
 
@@ -510,12 +649,25 @@
     // back to requested scale
     ctx.setTransform(oldMatrix);
 
-    // update game state
-    game.update(dt);
+    if (dt > 1) {
+      // browser did not call draw for more than a second, auto-pause
+      game.pause(1);
+    }
+    if (game.paused()) {
+      const s = 8 + Math.sin(timestamp * 0.004);
+      const w = 0.5 * 66 * s;
+      const h = 0.25 * 8 * s;
+      vectorText("GAME PAUSED", 0.5 * width - w, 0.5 * height + h, s);
+    } else {
+      game.update(dt);
+    }
 
     // show game state
     game.show();
     vectorText(`${game.score}`, 318, 30);
+    if (game.score > game.highScore) {
+      game.highScore = game.score;
+    }
     vectorText(`${game.highScore}`, 676, 30, 2);
 
     // show ships remaining at the top of screen up to MAX_LIVES
