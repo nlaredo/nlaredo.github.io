@@ -402,9 +402,10 @@
 
       // handle any keyboard rotation
       if (this.rot) {
-        // handle as if update rate is 30fps
-        // original rotated by PI / 32 radians per step
-        this.a += this.rot * Math.PI * 0.03125 * dt * 30;
+        // handle as kbd rotation if update rate is 48fps
+        // Arcade original rotated by PI / 32 radians per step
+        // unsure how many steps per second, but this looks right...
+        this.a += this.rot * Math.PI * 0.03125 * dt * 48;
         this.setForward();
       }
 
@@ -509,8 +510,8 @@
         let v = Math.random() * 150 + 50;
         let dx = v * Math.cos(a);
         let dy = v * Math.sin(a);
-        let x = width / 2 + d * Math.cos(a);
-        let y = height / 2 + d * Math.sin(a);
+        let x = this.ship.x + d * Math.cos(a);
+        let y = this.ship.y + d * Math.sin(a);
         this.asteroids.push(new Asteroid(x, y, LRG_SIZE, a, dx, dy));
       }
     }
@@ -610,7 +611,6 @@
     }
     if (event.type == "mousedown") {
       game.ship.fire(1);
-      console.log(x, y);
     }
   }
   function keyEvent(event) {
@@ -654,7 +654,7 @@
       game.pause(1);
     }
     if (game.paused()) {
-      const s = 8 + Math.sin(timestamp * 0.004);
+      const s = 8 + 0.5 * Math.sin(timestamp * 0.004);
       const w = 0.5 * 66 * s;
       const h = 0.25 * 8 * s;
       vectorText("GAME PAUSED", 0.5 * width - w, 0.5 * height + h, s);
