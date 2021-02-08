@@ -69,7 +69,7 @@
   const ROT_MAG = 5;   // ship rotation speed (vector magnitude)
   const T_MAG = 250;   // magnitude of thrust vector
   const P_MAG = 300;   // base magnitude of particle vector
-  const V_MAX = 500;   // max velocity vector magnitude
+  const V_MAX = 750;   // max velocity vector magnitude
 
   const SML_SIZE = 8;  // small asteroid radius
   const MED_SIZE = 16;  // medium asteroid radius
@@ -78,8 +78,7 @@
   const STATE_GAME_OVER = 1;
   const STATE_HIGH_SCORE = 2;
   const STATE_DEMO_PLAY = 4;
-  const STATE_PLAYING = 8;
-  const STATE_PAUSED = 16;
+  const STATE_PAUSED = 8;
 
   // vectors based on Ed Logg's drawings found on the internet
   const vectorShip = [
@@ -93,6 +92,19 @@
   ];
   const vectorParticle = [
     {x:-1,y:-1}, {x:1,y:-1}, {x:1,y:1}, {x:-1,y:1}, {x:-1,y:-1}
+  ];
+  const vectorExplosion = [
+    {x:0,y:0}, {x:0.1,y:0.1},
+    {x:-4,y:-4, m:true}, {x:-4.1,y:-4.1},
+    {x:-3,y:-1, m:true}, {x:-3.1,y:-1.1},
+    {x:3,y:-4, m:true}, {x:3.1,y:-4.1},
+    {x:-2,y:0, m:true}, {x:-2.1,y:-0.1},
+    {x:4,y:-1, m:true}, {x:4.1,y:-1.1},
+    {x:-4,y:2, m:true}, {x:-4.1,y:2.1},
+    {x:3,y:2, m:true}, {x:3.1,y:2.1},
+    {x:-2,y:4, m:true}, {x:-2.1,y:4.1},
+    {x:1,y:3, m:true}, {x:1.1,y:3.1},
+    {x:3,y:4, m:true}, {x:3.1,y:4.1},
   ];
   let vectorAsteroids = [];  // array of generated asteroids
   // character size and spacing (4x6 src coordinates):
@@ -273,13 +285,14 @@
       this.dx = dx;
       this.dy = dy;
       this.t = Math.floor(Math.random() * ROCK_VECTORS);
-      this.broken = false;
+      this.exploding = 0;
     }
     update(dt) {
       // update asteroid position based on current velocity
       this.x += this.dx * dt;
       this.y += this.dy * dt;
       this.a += this.da;
+      this.exploding += this.exploding ? dt : 0;
 
       // screen wrapping
       if (this.x < 0) this.x += width;
@@ -288,14 +301,13 @@
       if (this.y > height) this.y -= height;
     }
     hit(x, y, r) {
-      if (this.broken)
+      if (this.exploding)
         return false;  // skip ones already hit
       const dx = this.x - x;
       const dy = this.y - y;
       const dr = this.r + r;
       const dsquared = dx * dx + dy * dy;
-      this.broken = (dsquared < dr * dr);
-      return this.broken;
+      return (dsquared < dr * dr);
     }
     show() {
       if (debug) {
@@ -312,7 +324,13 @@
         ctx.stroke();
         ctx.restore();
       }
-      drawVector(vectorAsteroids[this.t], this.x, this.y, this.a, this.r);
+      if (!this.exploding) {
+        drawVector(vectorAsteroids[this.t], this.x, this.y, this.a, this.r);
+      } else {
+        // draw explosion
+        drawVector(vectorExplosion, this.x, this.y, this.a,
+                   8 * this.exploding * this.exploding * this.exploding);
+      }
     }
   }
   class Ship {
@@ -327,6 +345,7 @@
       this.rot = 0;
       this.thrust = 0;
       this.firing = 0;
+      this.exploding = 0;
       this.flametick = 0;
     }
     normalizeTarget(dx, dy) {
@@ -348,16 +367,24 @@
     }
     setAngle() { this.a = Math.atan2(this.fy, this.fx); }
     setTarget(x, y) {
+      if (this.exploding) return;
       // setup vector tx,ty for ship to point at
       this.normalizeTarget(x - this.x, y - this.y);
     }
     setThrust(v) {
+      if (this.exploding) return;
       this.thrust = v;
     }
     setRotate(d) {
+      if (this.exploding) return;
       this.rot = d;
     }
     fire(firing) {
+      if (firing && game.over()) {
+        game.newGame();
+        return;
+      }
+      if (this.exploding) return;
       // prevent key repeat
       if (this.firing == firing) {
         return;
@@ -393,6 +420,9 @@
       // lose 1/8 of velocity every second
       this.dx -= 0.125 * this.dx * dt;
       this.dy -= 0.125 * this.dy * dt;
+
+      // update any exploding animation
+      this.exploding += this.exploding ? dt : 0;
 
       // screen wrapping
       if (this.x < 0) this.x += width;
@@ -437,8 +467,14 @@
         ctx.stroke();
         ctx.restore();
       }
-      drawVector(this.thrust && (this.flametick < 0.5 * FLAMERATE) ?
-                 vectorShipThrust : vectorShip, this.x, this.y, this.a);
+      if (!this.exploding) {
+        drawVector(this.thrust && (this.flametick < 0.5 * FLAMERATE) ?
+                   vectorShipThrust : vectorShip, this.x, this.y, this.a);
+      } else {
+        // draw explosion
+        drawVector(vectorExplosion, this.x, this.y, this.a,
+                   8 * this.exploding * this.exploding * this.exploding);
+      }
     }
   }
   class Particle {
@@ -483,12 +519,13 @@
         this.ship = new Ship(loaded.ship.x, loaded.ship.y, loaded.ship.a,
                 loaded.ship.dx, loaded.ship.dy);
       }
-      this.state = loaded.state || STATE_GAME_OVER;
+      this.state = loaded.state >=0 ? loaded.state : STATE_GAME_OVER;
       this.score = loaded.score || 0;
       this.highScore = loaded.highScore || 100;
       if (this.lives < 0 || this.level < 1 || !this.asteroids ||
           this.asteroids.length < 1 || (this.state & STATE_GAME_OVER) ||
           !this.ship) {
+        console.log(loaded);
         this.newGame();
       }
     }
@@ -503,6 +540,7 @@
       }
     }
     paused() { return game.state & STATE_PAUSED; }
+    over() { return game.state & STATE_GAME_OVER; }
     newLevel() {
       for (let i = 0; i < MIN_ROCK + ADD_ROCK * (this.level - 1); i++) {
         let a = Math.random() * 2 * Math.PI;
@@ -516,6 +554,7 @@
       }
     }
     newGame() {
+      this.state &= ~STATE_GAME_OVER;
       this.lives = 3;
       this.level = 1;
       this.score = 0;
@@ -523,6 +562,35 @@
       this.asteroidsLeft = 0;
       this.asteroids = [];
       this.newLevel();
+    }
+    asteroidHit(a,p) {
+      // a = asteroid object
+      a.exploding = 0.5;  // start exploding animation
+      // p.x, p.y = point of impact
+      // get impact vector
+      const dx = a.x - p.x;
+      const dy = a.y - p.y;
+      switch(a.r) {
+        case SML_SIZE:
+          game.score += p.friendly ? SML_ROCK : 0;
+          break;
+        case MED_SIZE:
+          game.score += p.friendly ? MED_ROCK : 0;
+          // make two small sized rocks
+          this.asteroids.push(new Asteroid(a.x, a.y, SML_SIZE, a.a,
+                              a.dx + dx, a.dy - dy));
+          this.asteroids.push(new Asteroid(a.x, a.y, SML_SIZE, a.a,
+                              a.dx - dx, a.dy + dy));
+          break;
+        case LRG_SIZE:
+          game.score += p.friendly ? LRG_ROCK : 0;
+          // make two medium sized rocks
+          this.asteroids.push(new Asteroid(a.x, a.y, MED_SIZE, a.a,
+                              a.dx + dx, a.dy - dy));
+          this.asteroids.push(new Asteroid(a.x, a.y, MED_SIZE, a.a,
+                              a.dx - dx, a.dy + dy));
+          break;
+      }
     }
     update(dt) {
       this.ship.update(dt);
@@ -534,43 +602,53 @@
           const hit = a.hit(p.x, p.y, 2);
           if (hit) {
             p.lifetime = 0;
-            // get impact vector
-            const dx = a.x - p.x;
-            const dy = a.y - p.y;
-            switch(a.r) {
-              case SML_SIZE:
-                game.score += p.friendly ? SML_ROCK : 0;
-                break;
-              case MED_SIZE:
-                game.score += p.friendly ? MED_ROCK : 0;
-                // make two small sized rocks
-                this.asteroids.push(new Asteroid(a.x, a.y, SML_SIZE, a.a,
-                                    a.dx + dx, a.dy - dy));
-                this.asteroids.push(new Asteroid(a.x, a.y, SML_SIZE, a.a,
-                                    a.dx - dx, a.dy + dy));
-                break;
-              case LRG_SIZE:
-                game.score += p.friendly ? LRG_ROCK : 0;
-                // make two medium sized rocks
-                this.asteroids.push(new Asteroid(a.x, a.y, MED_SIZE, a.a,
-                                    a.dx + dx, a.dy - dy));
-                this.asteroids.push(new Asteroid(a.x, a.y, MED_SIZE, a.a,
-                                    a.dx - dx, a.dy + dy));
-                break;
-            }
+            this.asteroidHit(a, p);
           }
         });
       });
+      // check every astroid against player or saucer
+      this.asteroids.forEach(a => {
+        if (!game.ship.exploding) {
+          const hit = a.hit(game.ship.x, game.ship.y, 12);
+          if (hit) {
+            this.asteroidHit(a, game.ship);
+            this.ship.exploding = 0.5;
+          }
+        }
+      });
+      if (this.ship.exploding > 2) {
+        // ship exploded, wait for space for new ship
+        if (this.lives > 0) {
+          let hit = false;
+          this.asteroids.forEach(a => {
+            if (a.hit(width/2, height/2, 100)) {
+              hit = true;
+            }
+          });
+          if (!hit) {
+            this.ship = new Ship();
+            this.lives -= 1;
+          }
+        } else {
+          this.state |= STATE_GAME_OVER;
+        }
+      }
+
       // remove old particles
       this.particles = this.particles.filter(p => p.lifetime > 0);
-      this.asteroids = this.asteroids.filter(a => !a.broken);
+      this.asteroids = this.asteroids.filter(a =>
+        // if only one asteroid remains, give it 2x longer explosion
+        a.exploding < (this.asteroids.length < 2 ? 2 : 1)
+      );
       if (this.asteroids.length < 1) {
         this.level++;
         this.newLevel();
       }
     }
     show() {
-      this.ship.show();
+      if (this.ship.exploding < 1) {
+        this.ship.show();
+      }
       this.asteroids.forEach(a => a.show());
       this.particles.forEach(p => p.show());
     }
@@ -652,6 +730,12 @@
     if (dt > 1) {
       // browser did not call draw for more than a second, auto-pause
       game.pause(1);
+    }
+    if (game.over()) {
+      const s = 8 + 0.5 * Math.sin(timestamp * 0.004);
+      const w = 0.5 * 54 * s;
+      const h = 0.25 * 8 * s;
+      vectorText("GAME OVER", 0.5 * width - w, 0.5 * height + h, s);
     }
     if (game.paused()) {
       const s = 8 + 0.5 * Math.sin(timestamp * 0.004);
