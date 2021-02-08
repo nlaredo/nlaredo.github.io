@@ -738,10 +738,10 @@
       vectorText("GAME OVER", 0.5 * width - w, 0.5 * height + h, s);
     }
     if (game.paused()) {
-      const s = 8 + 0.5 * Math.sin(timestamp * 0.004);
+      const s = 8 + 0.5 * Math.cos(timestamp * 0.004);
       const w = 0.5 * 66 * s;
       const h = 0.25 * 8 * s;
-      vectorText("GAME PAUSED", 0.5 * width - w, 0.5 * height + h, s);
+      vectorText("GAME PAUSED", 0.5 * width - w, 0.25 * height + h, s);
     } else {
       game.update(dt);
     }
