@@ -14,11 +14,14 @@
     background:#005;
     border:.2vmin solid #889;
     position: fixed;
-    font-size: 25px;
+    font-size: 22px;
+    line-height: 38px;
     text-align: center;
     justify-content: center;
-    width: 75vmin;
-    top: 25px;
+    width: 100vw;
+    max-width: 300px;
+    min-height: 38px;
+    top: 38px;
     left:0;
     right:0;
     margin:auto;
@@ -34,17 +37,39 @@
     margin: auto;
   }
   .control {
-    margin: 10px auto;
+    margin: auto;
     max-width: 492px;
     width: 90vmin;
-    height: 25px;
+    height: 38px;
     font-size: 22px;
     text-align: center;
+    line-height: 38px;
     position: relative;
+    padding-bottom: 2px;
   }
-  #prev { position: absolute; left: 0px; color: #77f; }
-  #next { position: absolute; right: 0px; color: #77f; }
-  #prev:hover,#next:hover { color: #fff; }
+  .title {
+    margin: auto;
+    max-width: 320px;
+    width:113px;
+    line-height: 19px;
+    font-size: 70%;
+  }
+  .nav {
+    width: 38px;
+    height: 38px;
+    color: #558;
+    border: 1px solid #558;
+    border-radius:19px;
+    display: inline-block;
+  }
+  #prev { position:absolute; left:4px; top:0px; }
+  #next { position:absolute; right:4px; top:0px; }
+  #help { position:absolute; left:48px; top:0px; }
+  #hist { position:absolute; right:48px; top:0px; }
+  .nav:hover {
+    color: #ff0;
+    border: 1px solid #fff;
+  }
   [id*="box"]:before {
     content: "";
     display: block;
@@ -141,37 +166,38 @@
 </script>
  <div id="date" class="control">2015-10-21</div>
  <div class="control">
-   <div id="prev">&#9664;</div><div id="next">&#9654;</div>
-   Words with Stats
+   <div class="nav" id="prev" aria-label="previous puzzle">&#9665;</div>
+   <div class="nav" id="help" aria-label="help">?</div>
+   <div class="title">Words with Stats</div>
+   <div class="nav" id="hist" aria-label="statistics">&#9706;</div>
+   <div class="nav" id="next" aria-label="next puzzle">&#9655;</div>
  </div>
  <div class="gameboard">
-   <div id="box0">A</div> <div id="box1">B</div> <div
-   id="box2">C</div> <div id="box3">D</div> <div id="box4">E</div> <div
-   id="box5">F</div> <div id="box6">G</div> <div id="box7">H</div> <div
-   id="box8">I</div> <div id="box9">J</div> <div id="box10">K</div> <div
-   id="box11">L</div> <div id="box12">M</div> <div id="box13">N</div>
-   <div id="box14">O</div> <div id="box15">P</div> <div
-   id="box16">Q</div> <div id="box17">R</div> <div id="box18">S</div>
-   <div id="box19">T</div> <div id="box20">U</div> <div
-   id="box21">V</div> <div id="box22">W</div> <div id="box23">X</div>
-   <div id="box24">Y</div> <div id="box25">Z</div> <div
-   id="box26">a</div> <div id="box27">b</div> <div id="box28">c</div>
-   <div id="box29">d</div>
+   <div id="box0"></div><div id="box1"></div><div id="box2"></div>
+   <div id="box3"></div><div id="box4"></div><div id="box5"></div>
+   <div id="box6"></div><div id="box7"></div><div id="box8"></div>
+   <div id="box9"></div><div id="box10"></div><div id="box11"></div>
+   <div id="box12"></div><div id="box13"></div><div id="box14"></div>
+   <div id="box15"></div><div id="box16"></div><div id="box17"></div>
+   <div id="box18"></div><div id="box19"></div><div id="box20"></div>
+   <div id="box21"></div><div id="box22"></div><div id="box23"></div>
+   <div id="box24"></div><div id="box25"></div><div id="box26"></div>
+   <div id="box27"></div><div id="box28"></div><div id="box29"></div>
  </div>
  <div id="keyboard">
-   <div id="Key0">Q</div> <div id="Key1">W</div> <div id="Key2">E</div>
-   <div id="Key3">R</div> <div id="Key4">T</div> <div id="Key5">Y</div>
-   <div id="Key6">U</div> <div id="Key7">I</div> <div id="Key8">O</div>
-   <div id="Key9">P</div> <div class="quarter"></div>
+   <div id="Key0"></div><div id="Key1"></div><div id="Key2"></div>
+   <div id="Key3"></div><div id="Key4"></div><div id="Key5"></div>
+   <div id="Key6"></div><div id="Key7"></div><div id="Key8"></div>
+   <div id="Key9"></div><div class="quarter"></div>
    <div class="quarter"></div>  
-   <div id="Key10">A</div> <div id="Key11">S</div> <div id="Key12">D</div>
-   <div id="Key13">F</div> <div id="Key14">G</div> <div id="Key15">H</div>
-   <div id="Key16">J</div> <div id="Key17">K</div> <div id="Key18">L</div>
+   <div id="Key10"></div><div id="Key11"></div><div id="Key12"></div>
+   <div id="Key13"></div><div id="Key14"></div><div id="Key15"></div>
+   <div id="Key16"></div><div id="Key17"></div><div id="Key18"></div>
    <div id="Key27">&#9003;</div>
    <div id="Key28">&#9000;</div>
-   <div id="Key19">Z</div> <div id="Key20">X</div> <div id="Key21">C</div>
-   <div id="Key22">V</div> <div id="Key23">B</div> <div id="Key24">N</div>
-   <div id="Key25">M</div><div id="Key26">Enter</div>
+   <div id="Key19"></div><div id="Key20"></div><div id="Key21"></div>
+   <div id="Key22"></div><div id="Key23"></div><div id="Key24"></div>
+   <div id="Key25"></div><div id="Key26">Enter</div>
  </div>
  <div id="huh" class="info moved">Guess any five letter word
    in the dictionary...</div>
@@ -2110,6 +2136,7 @@ function updateKeys() {
     `Enter<div class="stats">${freqWords} possible</div>`;
 }
 function hideInfo() {
+  clearTimeout();  // cancel any pending auto-hide
   huh.style.display = '';
   win.style.display = '';
   end.style.display = '';
@@ -2117,6 +2144,7 @@ function hideInfo() {
 function showInfo(info) {
   hideInfo();
   info.style.display = 'flex';
+  setTimeout(hideInfo, 8000);  // auto-hide in 8 seconds
 }
 function inDictionary(guess) {
   for (let i = 0; i < words.length; i++) {
@@ -2178,8 +2206,16 @@ function handleKey(key) {
     if (pos > 0) cursor--;
   } else if (key == 'ArrowRight') {
     if (pos < 4) cursor++;
-  } else if (key == 'ArrowUp' || key == 'ArrowDown') {
-    // do nothing to cursor
+  } else if (key == 'ArrowUp' || key == 'Home') {
+    // cursor to start of line
+    cursor = cursor - pos;
+  } else if (key == 'ArrowDown' || key == 'End') {
+    // cursor to end of line
+    cursor = cursor + (4 - pos);
+  } else if (key == ' ' || key == 'Delete') {
+    if (!boxstate[cursor]) {
+      box[cursor].innerHTML = null;
+    }
   } else if (key == 'Enter') {
     // check for full guess
     handleEnter();
@@ -2200,7 +2236,7 @@ function virtualKey(event) {
   const id = (event.currentTarget.id.substring(3))|0;
   if (event.currentTarget.id.substring(0,3) == 'box') {
     cursor = cursor - (cursor % 5) + (id % 5);
-    handleKey('ArrowUp');
+    handleKey(' ');
   } else if (id == 28) {
     handleKey('/'); // toggle virtual keyboard layout
   } else if (id == 27) {
