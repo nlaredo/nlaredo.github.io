@@ -2068,7 +2068,10 @@ function updateStats() {
     for (j = 0; j < cursor; j++) {
       if (boxstate[j] == 'moved') {
         if (words[i].charAt(j % 5) == box[j].innerHTML) {
-          break;
+          break;  // word has moved letter in wrong spot
+        }
+        if (words[i].indexOf(box[j].innerHTML) < 0) {
+          break;  // word is lacking moved letter
         }
       }
     }
