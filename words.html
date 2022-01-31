@@ -27,6 +27,26 @@
     margin:auto;
     display:none;
   }
+  .scrollbox {
+    background: #007;
+    font-size: 12px;
+    width: 80vmin;
+    height: 80vh;
+    max-width: 444px;
+    max-height: calc(80vh - 90px);
+    position: fixed;
+    top:90px;
+    left:0px;
+    right:0px;
+    margin: auto;
+    padding: 24px;
+    border-radius: 12px;
+    overflow: auto;
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+    display:none;
+  }
+  .scrollbox::-webkit-scrollbar { display:none; }
   .gameboard {
     max-width: min(90%, 492px);
     width: calc(90vh - 260px);
@@ -203,6 +223,95 @@
    in the dictionary...</div>
  <div id="win" class="info right">Awesome!  Great work!</div>
  <div id="end" class="info wrong">Game Over</div>
+ <div id="gamestats" class="scrollbox">
+   <h1>Game Statistics</h1>
+   <p>Game state is not yet saved, so this feature is not yet
+   available yet. Will calculate win/loss data across all puzzles,
+   histogram of number of guesses per puzzle, stats on reused
+   bad guesses and more...</p>
+   <p>TODO list:</p>
+   <ul>
+   <li>save and restore game state (all puzzles)</li>
+   <li>collect statistics against all saved game state</li>
+   <li>show statistics screen after win/loss</li>
+   <li>allow wordle-style sharing of win/loss puzzle state</li>
+   </ul>
+ </div>
+ <div id="howtoplay" class="scrollbox">
+   <h1>How to Play</h1>
+   
+   <p>
+   Based on <a href="https://www.powerlanguage.co.uk/wordle/"
+   >WORDLE</a> by Josh Wardle.
+   </p>
+   <p>
+   You have six chances to guess the <b>WORD</b>.
+   </p>
+   <p>
+   Your guess can be any valid five letter word.
+   </p>
+   <hr>
+   <h2>Example</h2>
+     <div class="gameboard">
+       <div id="boxE0" class="right">W</div>
+       <div id="boxE1" class="right">O</div>
+       <div id="boxE2" class="right">R</div>
+       <div id="boxE3" class="wrong">L</div>
+       <div id="boxE4" class="moved">D</div>
+     </div>
+   <p>
+   In this example, the letters "W" and "O" and "R" are all in the
+   word and in their correct positions.
+   </p>
+   <p>
+   The letter "D" is in the word, but not in the correct position.
+   </p>
+   <p>
+   The letter "L" is not present at any position in the word.
+   </p>
+   <hr>
+   <h2>Winning</h2>
+   <p>You have won when all the tiles turn green after a guess:
+     <div class="gameboard">
+       <div id="boxW0" class="right">W</div>
+       <div id="boxW1" class="right">O</div>
+       <div id="boxW2" class="right">R</div>
+       <div id="boxW3" class="right">D</div>
+       <div id="boxW4" class="right">S</div>
+     </div>
+   You can wait for a new puzzle each day or just use the left
+   and right arrows above the puzzle board to switch to a different
+   day's puzzle.
+   </p>
+   <hr>
+   <h2>Keyboard Statistics</h2>
+   <div id="KeyExample">S<div class="stats">12%</div></div>
+   <p>The percentages shown under each letter on the on screen
+   keyboard represent the percentage of words in the dictionary
+   that have that letter in that position in the word.
+   </p>
+   <p>Once you enter a guess, the pool of words considered will
+   shrink according to which guesses are marked correct or
+   incorrect or in the wrong spot.
+   </p>
+   <p>The colors of the keys will change to match the status of
+   each letter as discovered in past guesses for the puzzle.
+   </p>
+   <h2>Source Code</h2>
+   <p>The source code for this project is available on <a
+   href="https://github.com/nlaredo/nlaredo.github.io/blob/master/words.html"
+   >GitHub</a>.
+   </p>
+   <h2>Privacy</h2>
+   <p>This site loads and runs Google Analytics tracking by default.
+   Google makes <a href="https://support.google.com/analytics/answer/181881"
+   >an extension</a> available to opt out of analytics tracking on all
+   sites by default.
+   </p>
+   <p>This site is hosted on GitHub pages.  The author of this site
+   directly collects no data at all and has no access to server logs.
+   </p>
+ </div>
  <script>
 const words = [
   "aahed", "aalii", "aargh", "aarti", "abaca", "abaci", "aback", "abacs",
@@ -2049,6 +2158,10 @@ const win = document.getElementById('win');
 const end = document.getElementById('end'); 
 const prev = document.getElementById('prev'); 
 const next = document.getElementById('next'); 
+const help = document.getElementById('help');  
+const hist = document.getElementById('hist');  
+const gamestats = document.getElementById('gamestats');  
+const howtoplay = document.getElementById('howtoplay');  
 let remapkeys = false;
 let box = Array(30); // on screen box objects
 let key = Array(29); // on screen key objects
@@ -2145,6 +2258,13 @@ function showInfo(info) {
   hideInfo();
   info.style.display = 'flex';
   setTimeout(hideInfo, 8000);  // auto-hide in 8 seconds
+}
+function toggleInfo(info) {
+  if (info.style.display == 'block') {
+    info.style.display = '';
+  } else {
+    info.style.display = 'block';
+  }
 }
 function inDictionary(guess) {
   for (let i = 0; i < words.length; i++) {
@@ -2269,14 +2389,22 @@ function navEvent(event) {
     setPuzzleHash(-1);
   } else if (event.currentTarget.id == 'next') {
     setPuzzleHash(1);
+  } else if (event.currentTarget.id == 'hist') {
+    toggleInfo(gamestats);
+  } else if (event.currentTarget.id == 'help') {
+    toggleInfo(howtoplay);
   }
 }
 function setupInput() {
   const pfft = {passive:false};
   prev.addEventListener('mouseup', navEvent, pfft);
   next.addEventListener('mouseup', navEvent, pfft);
+  help.addEventListener('mouseup', navEvent, pfft);
+  hist.addEventListener('mouseup', navEvent, pfft);
   prev.addEventListener('touchend', navEvent, pfft);
   next.addEventListener('touchend', navEvent, pfft);
+  help.addEventListener('touchend', navEvent, pfft);
+  hist.addEventListener('touchend', navEvent, pfft);
   window.addEventListener('keyup', keyEvent);
   for (let i = 0; i < 30; i++) {
     box[i] = document.getElementById(`box${i}`);
