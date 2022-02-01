@@ -2381,10 +2381,10 @@ function handleKey(key) {
     if (pos > 0) cursor--;
   } else if (key == 'ArrowRight') {
     if (pos < 4) cursor++;
-  } else if (key == 'ArrowUp' || key == 'Home') {
+  } else if (key == 'ArrowUp' || key == 'Home' || key == 'PageUp') {
     // cursor to start of line
     cursor = cursor - pos;
-  } else if (key == 'ArrowDown' || key == 'End') {
+  } else if (key == 'ArrowDown' || key == 'End' || key == 'PageDown') {
     // cursor to end of line
     cursor = cursor + (4 - pos);
   } else if (key == ' ' || key == 'Delete') {
