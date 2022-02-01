@@ -10,6 +10,8 @@
     border:0; width:100%; margin: 0; color:#eef; background:#003;
     user-select: none; font-family: Helvetica; font-size: 20px;
   }
+  a { color: #ff8; }
+  a:hover { color: #88f; }
   .info {
     background:#005;
     border:.2vmin solid #889;
@@ -46,6 +48,7 @@
     scrollbar-width: none;
     display:none;
   }
+  #secretcode { color: #88f; }
   .scrollbox::-webkit-scrollbar { display:none; }
   .gameboard {
     max-width: min(90%, 492px);
@@ -86,10 +89,12 @@
   #next { position:absolute; right:4px; top:0px; }
   #help { position:absolute; left:48px; top:0px; }
   #hist { position:absolute; right:48px; top:0px; }
-  .nav:hover {
+  .nav:hover,.activenav {
     color: #ff0;
     border: 1px solid #fff;
+    background: #007;
   }
+  .activenav,.activenav:hover { background: #700; }
   [id*="box"]:before {
     content: "";
     display: block;
@@ -297,11 +302,13 @@
    <p>The colors of the keys will change to match the status of
    each letter as discovered in past guesses for the puzzle.
    </p>
+   <hr>
    <h2>Source Code</h2>
    <p>The source code for this project is available on <a
    href="https://github.com/nlaredo/nlaredo.github.io/blob/master/words.html"
    >GitHub</a>.
    </p>
+   <hr>
    <h2>Privacy</h2>
    <p>This site loads and runs Google Analytics tracking by default.
    Google makes <a href="https://support.google.com/analytics/answer/181881"
@@ -311,7 +318,15 @@
    <p>This site is hosted on GitHub pages.  The author of this site
    directly collects no data at all and has no access to server logs.
    </p>
+   <hr>
+   <h2>As a reward for reading this far...</h2>
+   <p>You win knowledge of a secret keyboard-only code in game of
+   <span id="secretcode"
+   >Up Up Down Down Left Right Left Right Home End Home End</span>
+   will show you the full list of possible words from the
+   dictionary when the Enter key shows fewer than 100 possible.
  </div>
+ <div id="wordlist" class="scrollbox"></div>
  <script>
 const words = [
   "aahed", "aalii", "aargh", "aarti", "abaca", "abaci", "aback", "abacs",
@@ -2162,6 +2177,8 @@ const help = document.getElementById('help');
 const hist = document.getElementById('hist');  
 const gamestats = document.getElementById('gamestats');  
 const howtoplay = document.getElementById('howtoplay');  
+const secretcode = document.getElementById('secretcode');
+const wordlist = document.getElementById('wordlist');
 let remapkeys = false;
 let box = Array(30); // on screen box objects
 let key = Array(29); // on screen key objects
@@ -2184,10 +2201,11 @@ function resetGame() {
     }
     updateKeys();
 }
-function updateStats() {
+function updateStats(wantList = false) {
   freqCount.fill(0);
   freqWords = 0;
   const pos = cursor % 5;
+  let candidates = [];
   let j;
   for (let i = 0; i < words.length; i++) {
     for (j = 0; j < 5; j++) {
@@ -2217,6 +2235,12 @@ function updateStats() {
     if (j < cursor) continue; // skip words with good letter in wrong place
     freqCount[words[i].charCodeAt(pos) - 97]++;
     freqWords++;
+    if (wantList) {
+      candidates.push(words[i]);
+    }
+  }
+  if (wantList) {
+    return candidates;
   }
 }
 function updateKeys() {
@@ -2253,17 +2277,23 @@ function hideInfo() {
   huh.style.display = '';
   win.style.display = '';
   end.style.display = '';
+  wordlist.style.display = '';
 }
-function showInfo(info) {
+function showInfo(info, timeout = 8000) {
   hideInfo();
-  info.style.display = 'flex';
-  setTimeout(hideInfo, 8000);  // auto-hide in 8 seconds
+  info.style.display = 'block';
+  setTimeout(hideInfo, timeout);  // auto-hide in timeout ms
 }
-function toggleInfo(info) {
+let activenav = null;
+function toggleInfo(info, nav) {
   if (info.style.display == 'block') {
     info.style.display = '';
+    nav.classList.remove('activenav');
+    activenav = null;
   } else {
     info.style.display = 'block';
+    nav.classList.add('activenav');
+    activenav = nav.id;
   }
 }
 function inDictionary(guess) {
@@ -2319,7 +2349,32 @@ function handleEnter() {
 function toggleKeys() {
   remapkeys = !remapkeys;
 }
+let keyhistory = [];
+function trackKeys(key) {
+  if (freqWords > 100) {
+    return;  // no tracking for > 100 words left
+  }
+  if (key.substring(0, 5) != 'Arrow') {
+    keyhistory.push(key);
+  } else {
+    keyhistory.push(key.substring(5));
+  }
+  if (keyhistory.length > 12) {
+    keyhistory.splice(0, keyhistory.length - 12);
+  }
+  if (keyhistory.length == 12) {
+    const code = keyhistory.join(' ');
+    if (code == secretcode.innerHTML) {
+      let candidates = updateStats(true)
+      wordlist.innerHTML = '<h1>Candidate word list</h1>' +
+        `<p>${freqWords} possible</p><hr>` +
+        candidates.join('<br>\n');
+      showInfo(wordlist, 90000);
+    }
+  }
+}
 function handleKey(key) {
+  trackKeys(key);
   const pos = cursor % 5;
   const ch = key.toLowerCase();
   if (key == 'Backspace' || key == 'ArrowLeft') {
@@ -2383,16 +2438,23 @@ function touchEvent(event) {
   virtualKey(event);
 }
 function navEvent(event) {
+  const id = event.currentTarget.id;
   hideInfo();
   event.preventDefault();
-  if (event.currentTarget.id == 'prev') {
+  if (id == 'prev') {
     setPuzzleHash(-1);
-  } else if (event.currentTarget.id == 'next') {
+  } else if (id == 'next') {
     setPuzzleHash(1);
-  } else if (event.currentTarget.id == 'hist') {
-    toggleInfo(gamestats);
-  } else if (event.currentTarget.id == 'help') {
-    toggleInfo(howtoplay);
+  } else if (id == 'hist') {
+    if (activenav && activenav != id) {
+      toggleInfo(howtoplay, help);
+    }
+    toggleInfo(gamestats, hist);
+  } else if (id == 'help') {
+    if (activenav && activenav != id) {
+      toggleInfo(gamestats, hist);
+    }
+    toggleInfo(howtoplay, help);
   }
 }
 function setupInput() {
