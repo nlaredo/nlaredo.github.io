@@ -50,6 +50,11 @@
   }
   #secretcode { color: #88f; }
   .scrollbox::-webkit-scrollbar { display:none; }
+  .cols {
+    display: grid;
+    grid-auto-flow: column;
+    grid-template-columns: repeat(4, 1fr);
+  }
   .gameboard {
     max-width: min(90%, 492px);
     width: calc(90vh - 260px);
@@ -2365,10 +2370,13 @@ function trackKeys(key) {
   if (keyhistory.length == 12) {
     const code = keyhistory.join(' ');
     if (code == secretcode.innerHTML) {
-      let candidates = updateStats(true)
+      const candidates = updateStats(true)
+      const rows = 1 + Math.round(candidates.length / 4);
       wordlist.innerHTML = '<h1>Candidate word list</h1>' +
         `<p>${freqWords} possible</p><hr>` +
-        candidates.join('<br>\n');
+        '<div class="cols" style=' +
+        `"grid-template-rows:repeat(${rows}, 14px);">\n` + 
+        '<div>' + candidates.join('</div>\n<div>') + '</div></div>';
       showInfo(wordlist, 90000);
     }
   }
@@ -2377,7 +2385,14 @@ function handleKey(key) {
   trackKeys(key);
   const pos = cursor % 5;
   const ch = key.toLowerCase();
-  if (key == 'Backspace' || key == 'ArrowLeft') {
+  if (key == 'Backspace') {
+    if (pos > 0 && !(pos == 4 && box[cursor].innerHTML)) {
+      cursor--;
+    }
+    if (!boxstate[cursor]) {
+      box[cursor].innerHTML = null;
+    }
+  } else if (key == 'ArrowLeft') {
     if (pos > 0) cursor--;
   } else if (key == 'ArrowRight') {
     if (pos < 4) cursor++;
@@ -2391,6 +2406,8 @@ function handleKey(key) {
     if (!boxstate[cursor]) {
       box[cursor].innerHTML = null;
     }
+  } else if (key.length == 1 && ch >= '0' && ch <= '9') {
+    cursor = cursor - (cursor % 5) + ("1234567890".indexOf(ch) % 5);
   } else if (key == 'Enter') {
     // check for full guess
     handleEnter();
@@ -2410,8 +2427,7 @@ function virtualKey(event) {
   // turn virtual keypress into keyboard event "key"
   const id = (event.currentTarget.id.substring(3))|0;
   if (event.currentTarget.id.substring(0,3) == 'box') {
-    cursor = cursor - (cursor % 5) + (id % 5);
-    handleKey(' ');
+    handleKey(String(1 + id % 5));
   } else if (id == 28) {
     handleKey('/'); // toggle virtual keyboard layout
   } else if (id == 27) {
