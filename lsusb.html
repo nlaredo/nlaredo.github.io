@@ -1,0 +1,33 @@
+<html>
+<head>
+	<title>WebUSB lsusb</title>
+</head>
+<body>
+	<h1>WebUSB lsusb</h1>
+	<p>Lists USB devices known to the browser</p>
+	<p>Devices Found: <span id="num">0</span></p>
+	<ul id="list">
+	</ul>
+
+<script>
+let num = document.getElementById("num");
+let list = document.getElementById("list");
+navigator.usb.getDevices().then((devices) => {
+  num.innerHTML = devices.length
+	list.innerHTML = '';
+  console.log(`Total devices: ${devices.length}`);
+  devices.forEach((device) => {
+		  list.innerHTML += `<li>[0x${device.vendorId.toString(16)}:` +
+       			`0x${device.productId.toString(16)}] ` + 
+			`<b>${device.productName}</b><ul>` +
+			`<li>serialNumber: ${device.serialNumber}</li>` +
+			`<li>deviceVersionMajor: ${device.deviceVersionMajor}</li>` +
+			`<li>deviceVersionMinor: ${device.deviceVersionMinor}</li>` +
+			`<li>deviceVersionSubminor: ${device.deviceVersionSubminor}</li>` +
+			`<li>manufacturerName: ${device.manufacturerName}</li>`;
+    console.log(device);
+  });
+});
+</script>
+</body>
+</html>
