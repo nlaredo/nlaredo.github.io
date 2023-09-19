@@ -18,8 +18,8 @@ function request() {
         let filters = [];
         navigator.usb.requestDevice({filters}).then((device) => {
                 console.log(device);
-                }).catch((e) => { });
                 lsusb();
+                }).catch((e) => { });
 }
 
 function lsusb() {
