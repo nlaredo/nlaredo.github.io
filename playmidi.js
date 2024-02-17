@@ -73,6 +73,8 @@ var meta = {
   KEY_SIGNATURE:0x59,
   SEQUENCER_SPECIFIC:0x74,
   META_EVENT:0xff, // prefixes all of the above in the midi file
+  MIDI_HEADER: 0x4d546864, // "MThd"
+  TRACK_HEADER: 0x4d54726b,  // "MTrk"
 };
 var midi_status = {
   NOTEOFF:0x80,
@@ -300,15 +302,68 @@ whitekey.src = "images/whitekey.png";
 
 resize();
 initaudio();
+function hexdump(a, offset, len) {
+  if (!offset)
+    offset = 0;
+  if (len < 16 || !len)
+    len = 128;
+  var lines = [];
+  var alen = (offset + len).toString(16).length;
+  for (var row = 0; row < (len >> 4); row++) {
+    var out = [];
+    out.push(("0000000" + offset.toString(16)).slice(-alen) + ":");
+    for (var i = 0; i < 16; i++) {
+      out.push(" " + ("0" + a[offset + i].toString(16)).slice(-2));
+    }
+    out.push("   ");
+    for (var i = 0; i < 16; i++) {
+      out.push(a[offset + i] >= 32 ?
+               String.fromCharCode(a[offset + i]) : ".");
+    }
+    lines.push(out.join(""));
+    offset += 16;
+  }
+  console.log(lines.join("\n"));
+  return offset;
+}
+function readVLC(f) {
+  var val = 0;
+  var c = 0;
+  do {
+    if (f.pos < f.size) {
+      c = f.buf[f.pos++];
+    }
+    val |= (c & 0x7f);
+    if (c & 0x80) {
+      val <<= 7;
+    }
+  } while ((c & 0x80) && f.pos < f.size);
+}
+function read32(f) {
+  var val = 0;
+  for (var i = 0; i < 4 && f.pos < f.size; i++) {
+    val = (val << 8) | f.buf[f.pos++];
+  }
+  return val;
+}
+function read16(f) {
+  var val = 0;
+  for (var i = 0; i < 2 && f.pos < f.size; i++) {
+    val = (val << 8) | f.buf[f.pos++];
+  }
+  return val;
+}
 function loadmidi(midifile) {
   this.index = filelist.length - 1;
   this.p = midifile.arrayBuffer().then(a => {
-    filelist[this.index].buf = new Uint8Array(a);
-    if (filelist[this.index].buf[0] != 0x4d ||
-        filelist[this.index].buf[1] != 0x54 ||
-        filelist[this.index].buf[2] != 0x68 ||
-        filelist[this.index].buf[3] != 0x64) {
-      filelist[this.index].ignore = true;
+    var f = filelist[this.index];
+    f.buf = new Uint8Array(a);
+    var hdr = read32(f);
+    if (hdr == meta.MIDI_HEADER) {
+      var len = read32(f);
+      f.type = read16(f);
+      f.tracks = read16(f);
+      f.division = read16(f);
     }
 
     updatefilelist();
@@ -320,8 +375,11 @@ function handlefiles(files) {
     filelist.push({
       buf:null,
       name:files[i].name,
+      type:-1,
+      tracks:0,
+      division:0,
+      pos:0,
       size:files[i].size,
-      ignore:false,
       fillbuf:null,
     });
     // for promise: need to do this one *after* array push
@@ -332,9 +390,12 @@ function updatefilelist() {
   var newhtml = '<ol>';
   count = filelist.length;
   for (var i=0; i < count; i++) {
-    newhtml += '<li>' + filelist[i].name + ', ' + filelist[i].size +
-      ' bytes ' + (filelist[i].buf ? 'loaded' : '') +
-      (filelist[i].ignore ? ', ignored, not midi' : '') + '</li>';
+    var f = filelist[i];
+    newhtml += '<li>' + f.name + ', ' + (f.type < 0 ? 'ignored' :
+    ' type: ' + f.type + ', tracks: ' + f.tracks + ', division: ' +
+    f.division) +
+    '<span style="width:95px;float:right;text-align:right">' + f.size +
+    '&nbsp;bytes</span></li>';
   }
   newhtml += '</ol>';
   filequeue.innerHTML = newhtml;
