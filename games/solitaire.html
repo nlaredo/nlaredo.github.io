@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Solitaire</title>
+    <meta name="description" content="html5 solitaire" />
+    <meta name="author" content="github.com/nlaredo" />
+    <style>
+     html, body {
+       border:0; margin: 0; height:100%; background: #040;
+     }
+     canvas { border: 0; margin:0; background:#040; }
+     div {
+       border: 1px solid #030;
+       border-radius:1vw;
+       position: fixed;
+       color: #444;
+       background: #fff;
+       width: 13vw;
+       height: 18vw;
+       font:18vw sans-serif;
+       text-align:center;
+       line-height:18vw;
+     }
+     #deck { top:1vw; left:1vw; }
+     #flipped { top:1vw; left:15vw; }
+     #spades { top:1vw; left:43vw; }
+     #hearts { top:1vw; left:57vw; color:#a00; }
+     #clubs { top:1vw; left:71vw; }
+     #diamonds { top:1vw; left:85vw; color:#a00; }
+     #s1 { top:20vw; left:1vw; }
+     #s2 { top:20vw; left:15vw; }
+     #s3 { top:20vw; left:29vw; }
+     #s4 { top:20vw; left:43vw; }
+     #s5 { top:20vw; left:57vw; }
+     #s6 { top:20vw; left:71vw; }
+     #s7 { top:20vw; left:85vw; }
+    </style>
+  </head>
+<body>
+  <!-- Global site tag (gtag.js) - Google Analytics -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-J4DSMHX8B7"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+
+    gtag('config', 'G-J4DSMHX8B7');
+  </script>
+
+  <div id="deck">&#x1f0a0;</div>
+  <div id="flipped">&#x1f0ae;</div>
+  <div id="spades">&#x1f0a1;</div>
+  <div id="hearts">&#x1f0b1;</div>
+  <div id="clubs">&#x1f0d1;</div>
+  <div id="diamonds">&#x1f0c1;</div>
+  <div id="s1">&#x1f0a9;</div>
+  <div id="s2">&#x1f0a2;</div>
+  <div id="s3">&#x1f0a3;</div>
+  <div id="s4">&#x1f0a4;</div>
+  <div id="s5">&#x1f0a5;</div>
+  <div id="s6">&#x1f0a6;</div>
+  <div id="s7">&#x1f0a7;</div>
+
+  <script>
+    let card = document.getElementById("s1");
+    var pfft = {passive:false};
+
+    function mouseEvent(e) {
+      card.style.left = (-30+e.clientX) + 'px';
+      card.style.top = (-30+e.clientY) + 'px';
+    }
+    s1.addEventListener('mousemove', mouseEvent, pfft);
+
+  </script>
+</body>
+</html>
