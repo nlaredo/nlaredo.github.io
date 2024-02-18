@@ -1,6 +1,4 @@
-# nlaredo.github.io
-
-Files located here:
+# Files located here:
 
 * [LICENSE](LICENSE)
 * [Makefile](Makefile)
