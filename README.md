@@ -1,4 +1,4 @@
-# Files located here:
+# Files located [here](http://nlaredo.github.io/README.md):
 
 * [LICENSE](LICENSE)
 * [Makefile](Makefile)
