@@ -364,8 +364,20 @@ function loadmidi(midifile) {
       f.type = read16(f);
       f.tracks = read16(f);
       f.division = read16(f);
+      for (var i = 0; i < f.tracks; i++) {
+        var thdr = read32(f);
+        var tlen = read32(f);
+        if (thdr == meta.TRACK_HEADER && tlen + f.pos <= f.size) {
+          f.track.push({
+            pos:0,
+            size:tlen,
+            buf:f.buf.subarray(f.pos, f.pos + tlen),
+            running_st:0,
+          });
+          f.pos += tlen;
+        }
+      }
     }
-
     updatefilelist();
   });
 }
@@ -377,7 +389,12 @@ function handlefiles(files) {
       name:files[i].name,
       type:-1,
       tracks:0,
-      division:0,
+      division:48,
+      tempo:120,  // bpm = 60000000 / microseconds per quarter
+      tempo_us:500000,
+      time_n:4,
+      time_d:4,
+      track:[],
       pos:0,
       size:files[i].size,
       fillbuf:null,
