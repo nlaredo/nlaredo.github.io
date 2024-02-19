@@ -1,21 +1,21 @@
 # Files located [here](https://nlaredo.github.io/):
 
-* [LICENSE](LICENSE)
-* [Makefile](Makefile)
-* [README.md](README.md)
-* [canvas-template.html](canvas-template.html)
-* [clock-test.html](clock-test.html)
-* [favicon.ico](favicon.ico)
-* [games/asteroids.html](games/asteroids.html)
-* [games/prelude.html](games/prelude.html)
-* [games/solitaire.html](games/solitaire.html)
-* [images/blackkey.png](images/blackkey.png)
-* [images/whitekey.png](images/whitekey.png)
-* [lsusb.html](lsusb.html)
-* [mandelbrot.c](mandelbrot.c)
-* [mandelbrot.html](mandelbrot.html)
-* [playmidi.html](playmidi.html)
-* [playmidi.js](playmidi.js)
-* [teleprompter.html](teleprompter.html)
-* [tuner.html](tuner.html)
-* [words.html](words.html)
+* [LICENSE](LICENSE) - GNU General Public License v3.0
+* [Makefile](Makefile) - mandelbrot.c WASM builder
+* [README.md](README.md) - this page
+* [canvas-template.html](canvas-template.html) - html5/js demo template
+* [clock-test.html](clock-test.html) - lots of clocks, lots of speeds
+* [favicon.ico](favicon.ico) - small icon file reading "NIL"
+* [games/asteroids.html](games/asteroids.html) - like the arcade game
+* [games/prelude.html](games/prelude.html) - bounce a ball through notes
+* [games/solitaire.html](games/solitaire.html) - might finish someday
+* [images/blackkey.png](images/blackkey.png) - image used for playmidi
+* [images/whitekey.png](images/whitekey.png) - image used for playmidi
+* [lsusb.html](lsusb.html) - list detected USB devices in browser
+* [mandelbrot.c](mandelbrot.c) - WASM C source for mandelbrot viewer
+* [mandelbrot.html](mandelbrot.html) - mandelbrot viewer
+* [playmidi.html](playmidi.html) - record/play music in browser
+* [playmidi.js](playmidi.js) - javascript source to playmidi
+* [teleprompter.html](teleprompter.html) - javascript teleprompter
+* [tuner.html](tuner.html) - musical tuner exercise from the coding train
+* [words.html](words.html) - game that plays like wordle, but with cheats
