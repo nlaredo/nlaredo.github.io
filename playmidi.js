@@ -5,6 +5,13 @@ var cfgform = document.forms['cfgform'];
 var filequeue = document.getElementById("filequeue");
 var transport = document.getElementById("transport");
 var settempo = document.getElementById("tempo");
+var prev = document.getElementById("prev");
+var pause = document.getElementById("pause");
+var play = document.getElementById("play");
+var next = document.getElementById("next");
+var loop = document.getElementById("loop");
+var sloop = document.getElementById("sloop");
+var eloop = document.getElementById("eloop");
 var taptempo = document.getElementById("tap");
 var filelist = [];
 var ctx = canvas.getContext("2d");
@@ -430,6 +437,25 @@ function dragevent(event) {
     }
   }
 }
+function uibutton(e) {
+  var now = Date.now();
+  if (e.target == taptempo) {
+    tempo.beats++;
+    tempo.count++;
+    if (now > tempo.last) {
+      tempo.ms = now - tempo.last;
+      tempo.avgms = (now - tempo.first) / tempo.count;
+      if (Math.abs(tempo.ms - tempo.avgms) > 2) {
+        tempo.count = 0;  // restart long running avg
+        tempo.avgms = tempo.ms;
+      }
+      tempo.val = (60000 / tempo.avgms).toFixed(1);
+    }
+    if (tempo.count == 0)
+      tempo.first = now;
+    tempo.last = now;
+  }
+}
 function enableevents() {
   // register some event handlers
   window.addEventListener('resize', resize, false);
@@ -446,6 +472,14 @@ function enableevents() {
   canvas.addEventListener('touchend', handletouch, opt);
   canvas.addEventListener('touchmove', handletouch, opt);
   canvas.addEventListener('touchcancel', handletouch, opt);
+  prev.addEventListener('click', uibutton, opt);
+  pause.addEventListener('click', uibutton, opt);
+  play.addEventListener('click', uibutton, opt);
+  next.addEventListener('click', uibutton, opt);
+  loop.addEventListener('click', uibutton, opt);
+  sloop.addEventListener('click', uibutton, opt);
+  eloop.addEventListener('click', uibutton, opt);
+  taptempo.addEventListener('click', uibutton, opt);
   ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(
     function(e) { window.addEventListener(e, dragevent, false); });
   // enable midi events

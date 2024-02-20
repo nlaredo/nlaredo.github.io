@@ -192,14 +192,14 @@ accept=".mid,.kar,.midi" onchange="handlefiles(this.files)" /></br>
 </form>
 </div>
 <div id="transport">
-<input name="default" type="button" value="Prev"></input>
-<input name="default" type="button" value="Pause"></input>
-<input name="default" type="button" value="Play"></input>
-<input name="default" type="button" value="Next"></input>
-<input name="default" type="button" value="Loop"></input>
-<input name="default" type="button" value="Loop Start"></input>
-<input name="default" type="button" value="Loop End"></input>
-<input name="default" type="button" value="Tap" id="tap"></input>
+<input id="prev"  type="button" value="Prev"></input>
+<input id="pause" type="button" value="Pause"></input>
+<input id="play"  type="button" value="Play"></input>
+<input id="next"  type="button" value="Next"></input>
+<input id="loop"  type="button" value="Loop"></input>
+<input id="sloop" type="button" value="Loop Start"></input>
+<input id="eloop" type="button" value="Loop End"></input>
+<input id="tap"   type="button" value="Tap"></input>
 <label>Tempo:<input id="tempo" name="tempo" type="number" value="120"
 min="1" max="500" step="any"></input></label>
 </div>
