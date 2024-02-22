@@ -14,6 +14,10 @@ var sloop = document.getElementById("sloop");
 var eloop = document.getElementById("eloop");
 var taptempo = document.getElementById("tap");
 var filelist = [];
+var smf = -1; // current index into above array
+var tsnext = -1;  // timestamp (ms) next midifile event will play
+var tsnow = -1;   // timestamp (ms) of current animation frame
+var playing = false;  // is a midi file currently being played?
 var ctx = canvas.getContext("2d");
 
 var context=null;	// the Web Audio "context" object
@@ -32,7 +36,7 @@ var decay=0.05;	        // decay speed
 var sustain=0.75;       // sustain level
 var release=0.15;	// release speed
 var mastertune=440;
-var maxVoices=16;
+var maxVoices=24;
 var soundon = false;
 var hold1 = false;      // cc64
 var sostenuto = false;  // cc66
@@ -224,6 +228,8 @@ var midi_nrpn = {
   NRPN_NULL:0x7f7f,
 };
 
+var cmdlen = [0, 0, 0, 0, 0, 0, 0, 0, 2, 2, 2, 2, 1, 1, 2, 0];
+var maxticks = Number.MAX_SAFE_INTEGER;
 // make all the enum-like objects read-only
 if (Object.freeze) {
   Object.freeze(meta);
@@ -232,6 +238,8 @@ if (Object.freeze) {
   Object.freeze(midi_ctl);
   Object.freeze(midi_rpn);
   Object.freeze(midi_nrpn);
+  Object.freeze(cmdlen);
+  Object.freeze(maxticks);
 }
 
 var ccolor = [];
@@ -272,8 +280,8 @@ var maxparticles = 1000;
 var psize = 3;
 var gravity = 0.6;
 var midilog = [];  // log for all generated/received events
-var notefrac = 0;  // for tracking pitchbend
-var bendmult = 1;  // for playing pitchbend
+var notefrac = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]; // tracking pitchbend
+var bendmult = [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]; // playing pitchbend
 var bendup = 2;  // pitchbend range in semitones
 var benddn = 2;  // pitchbend range in semitones
 var keybed = 69.81818182; // 128 key full size midi keyboard in inches
@@ -345,6 +353,7 @@ function readVLC(f) {
       val <<= 7;
     }
   } while ((c & 0x80) && f.pos < f.size);
+  return val;
 }
 function read32(f) {
   var val = 0;
@@ -359,6 +368,11 @@ function read16(f) {
     val = (val << 8) | f.buf[f.pos++];
   }
   return val;
+}
+function read8(f) {
+  if (f.pos >= f.size)
+    return 0;
+  return f.buf[f.pos++];
 }
 function loadmidi(midifile) {
   this.index = filelist.length - 1;
@@ -376,12 +390,15 @@ function loadmidi(midifile) {
         var tlen = read32(f);
         if (thdr == meta.TRACK_HEADER && tlen + f.pos <= f.size) {
           f.track.push({
-            pos:0,
+            pos:0,  // byte offset processing track
             size:tlen,
-            buf:f.buf.subarray(f.pos, f.pos + tlen),
-            running_st:0,
+            buf:f.buf.subarray(f.pos, f.pos + tlen),  // track events
+            running_st:0, // last status byte read
+            tick:0,  // next event tick in track
           });
           f.pos += tlen;
+          // pre-load next tick position for each track
+          f.track[i].tick = readVLC(f.track[i]);
         }
       }
     }
@@ -392,17 +409,18 @@ function handlefiles(files) {
   var count = files.length;
   for (var i=0; i < count; i++) {
     filelist.push({
-      buf:null,
+      buf:null,  // midi file contents
       name:files[i].name,
-      type:-1,
-      tracks:0,
-      division:48,
+      type:-1,  // 0 = 1-track, 1 = multi-track, 2 = multi-1-track-songs
+      tracks:0,  // number of tracks in file
+      division:48,  // ticks per beat
       tempo:120,  // bpm = 60000000 / microseconds per quarter
-      tempo_us:500000,
-      time_n:4,
-      time_d:4,
-      track:[],
-      pos:0,
+      tempo_us:500000,  // tempo in microseconds per quarter
+      time_n:4, // time signature numerator
+      time_d:4, // time signature denominator
+      tick:0, // current tick position
+      track:[], // per-track buffers and status
+      pos:0,  // byte offset processing file
       size:files[i].size,
       fillbuf:null,
     });
@@ -437,6 +455,150 @@ function dragevent(event) {
     }
   }
 }
+function handle_meta(t, e, d, f) {
+  switch (e) {
+    case meta.END_OF_TRACK:
+      t.ticks = maxticks;
+      return;
+    case meta.SET_TEMPO:
+      f.tempo_us = (d[0] << 16) | (d[1] << 8) | d[2];
+      f.tempo = 60000000 / f.tempo_us;
+      tempo.val = f.tempo.toFixed(1);
+      return;
+    case meta.SEQUENCE_NUMBER:
+    case meta.TEXT_EVENT:
+    case meta.COPYRIGHT_NOTICE:
+    case meta.SEQUENCE_NAME:
+    case meta.INSTRUMENT_NAME:
+    case meta.LYRIC:
+    case meta.MARKER:
+    case meta.CUE_POINT:
+    case meta.PROGRAM_NAME:
+    case meta.DEVICE_NAME:
+      console.log("meta 0x" + e.toString(16) + ": " +
+                  d.map(x => String.fromCharCode(x)).join(""));
+      return;
+    case meta.CHANNEL_PREFIX:
+    case meta.SMPTE_OFFSET:
+    case meta.TIME_SIGNATURE:
+    case meta.KEY_SIGNATURE:
+    case meta.SEQUENCER_SPECIFIC:
+      console.log("meta 0x" + e.toString(16) + ": " + d);
+  } 
+}
+function handle_midi(e, d) {
+  var command = e & 0xf0;
+  var channel = e & 0x0f;
+  if (channel == 9)
+    return;
+  switch (command) {
+    case midi_status.CTL_CHANGE:
+      switch(d[0]) {
+        case midi_ctl.MODWHEEL:
+          cc01(channel, d[1]);
+          break;
+        case midi_ctl.HOLD1:
+          cc64(channel, d[1]);
+          break;
+        case midi_ctl.SOSTENUTO:
+          cc66(channel, d[1]);
+          break;
+        case midi_ctl.SOFT_PEDAL:
+          cc67(channel, d[1]);
+          break;
+      }
+      break;
+    case midi_status.PITCH_BEND:
+      pitchBend(channel, (d[1] << 7) | d[0]);
+      break;
+
+    case midi_status.NOTEON:
+      if (d[1] != 0) {  // if velocity != 0, this is a note-on message
+        noteOn(channel, d[0], d[1]);
+        break;
+      }
+      // if velocity == 0, fall through to note off case
+    case midi_status.NOTEOFF:
+      noteOff(channel, d[0], d[1]);
+      break;
+  }
+}
+function playevents(f) {
+  var i;
+  var mintick = maxticks;
+  // find track with the lowest delta tick count
+  for (i = 0; i < f.tracks; i++) {
+    if (f.track[i].pos >= f.track[i].size)
+      f.track[i].tick = maxticks;
+    if (f.track[i].tick < mintick)
+      mintick = f.track[i].tick;
+  }
+  if (mintick == maxticks) {
+    // no remaining data, readVLC returns ~0 on fail
+    playing = false;
+    tsnext = tsnow = 0;
+  }
+  f.tick = mintick;
+  // handle all tracks with the same lowest delta tick count
+  // lowest numbered track first
+  do {
+    for (i = 0; i < f.tracks; i++) {
+      if (f.track[i].tick <= mintick) {
+        var data = [];
+        // get first event byte
+        data.push(read8(f.track[i]));
+        // if bit 7 is set, forward to running status
+        if (data[0] & 0x80) {
+          f.track[i].running_st = data[0];
+          data.pop();
+        }
+        // if running status is 0xff, it's a meta event
+        if (f.track[i].running_st == 0xff) {
+          // make running status the meta event number
+          // which will force read of VLC length
+          f.track[i].running_st = read8(f.track[i]);
+        }
+        var len = cmdlen[f.track[i].running_st >> 4];
+        if (len == 0) {
+          // get the length of a meta event
+          len = readVLC(f.track[i]);
+        }
+        // read the bytes of the event
+        for (var d = data.length; d < len; d++) {
+          data.push(read8(f.track[i]));
+        }
+        if (f.track[i].running_st < 0x80) {
+          handle_meta(f.track[i], f.track[i].running_st, data, f);
+        } else {
+          handle_midi(f.track[i].running_st, data);
+        }
+        // setup next tick for track
+        f.track[i].tick += readVLC(f.track[i]);
+        if (f.track[i].pos >= f.track[i].size)
+          f.track[i].tick = maxticks;
+        break; // check from track 0 again for more at mintick
+      }
+    }
+  } while (i < f.tracks);
+  var dms = 0;  // calculate milliseconds to next nearest event
+  // find track with the lowest delta tick count to schedule next
+  mintick = maxticks;
+  for (i = 0; i < f.tracks; i++) {
+    if (f.track[i].tick < mintick)
+      mintick = f.track[i].tick;
+  }
+  if (1 || f.division > 0) {
+    dms = (mintick - f.tick) * (f.tempo_us / 1000) / f.division;
+  } else {
+    // TODO: SMPTE timing
+  }
+  tsnext += dms;
+}
+var visible = true;
+function vischange(e) {
+  visible = (document.visibilityState === "visible");
+  tsnext = tsnow = 0;
+}
 function uibutton(e) {
   var now = Date.now();
   if (e.target == taptempo) {
@@ -454,10 +616,21 @@ function uibutton(e) {
     if (tempo.count == 0)
       tempo.first = now;
     tempo.last = now;
+  } else if (e.target == play) {
+    tsnext = tsnow = 0;
+    playing = !playing;
+    if (!playing) {
+      // TODO: stop all playing notes
+      return;
+    }
+    if (smf < 0 && filelist.length > 0) {
+      smf++;
+    }
   }
 }
 function enableevents() {
   // register some event handlers
+  window.addEventListener('visibilitychange', vischange, false);
   window.addEventListener('resize', resize, false);
   cfgform.addEventListener('submit', toggleconfig, false);
   var opt = {passive:false};
@@ -604,15 +777,17 @@ function noteFreq(note) {
   return mastertune * Math.pow(2,(note-69)/12);
 }
 
-function pitchBend(value) {
+function pitchBend(channel, value) {
   var bendrange = value < 8192 ? benddn : bendup;
-  notefrac = bendrange * (value - 8192.0) / 8192.0;
-  bendmult= Math.pow(2, (bendrange / 12) * (value - 8192.0) / 8192.0);
+  notefrac[channel] = bendrange * (value - 8192.0) / 8192.0;
+  bendmult[channel] = Math.pow(2,
+                        (bendrange / 12) * (value - 8192.0) / 8192.0);
   if (soundon) {
-    // modify all the playing notes by the bend value
+    // modify all the playing notes on the channel by the bend value
     for (var i = 0; i < maxVoices; i++) {
-      if (voice[i].note >= 0) {
-        voice[i].osc.frequency.setValueAtTime(voice[i].freq * bendmult, 0);
+      if (voice[i].note >= 0 && voice[i].channel == channel) {
+        voice[i].osc.frequency.setValueAtTime(voice[i].freq *
+                bendmult[channel], 0);
       }
     }
   }
@@ -655,10 +830,12 @@ function startDTMF(keyentry, plan) {
 function startNote(channel, note, velocity) {
   var i = nextNote(note);
   voice[i].note = note;
+  voice[i].channel = channel;
   voice[i].freq = noteFreq(note);
   voice[i].hold1 = false;
   voice[i].sostenuto = false;
-  voice[i].osc.frequency.setValueAtTime(voice[i].freq * bendmult, 0);
+  voice[i].osc.frequency.setValueAtTime(voice[i].freq *
+                                        bendmult[channel], 0);
   voice[i].osc.type = waveform;
   if (voice[i].start < 0)
     voice[i].osc.start();
@@ -1378,7 +1555,7 @@ function midimessage(event) {
       }
       break;
     case midi_status.PITCH_BEND:
-      pitchBend(event.data[1] | (event.data[2] << 7));
+      pitchBend(channel, (event.data[2] << 7) | event.data[1]);
       break;
     case midi_status.NOTEON:
       if (event.data[2]!=0) {  // if velocity != 0, this is a note-on message
@@ -1449,7 +1626,7 @@ function noteOn(channel, noteNumber, velocity) {
 }
 function noteOff(channel, noteNumber) {
   for (var i = 0, j = noteboxes.length; i < j; i++) {
-    if (noteboxes[i].n == noteNumber)
+    if (noteboxes[i].n == noteNumber && noteboxes[i].channel == channel)
       noteboxes[i].playing = false;
   }
   if (noteNumber < kct) {
@@ -1897,6 +2074,7 @@ function drawkeyboard() {
 function NoteBox(channel, noteNumber, velocity) {
   this.y = canvas.height - kh;
   this.h = 1;
+  this.channel = channel;
   this.n = noteNumber;
   this.v = velocity;
   this.playing = true;
@@ -1907,7 +2085,8 @@ function NoteBox(channel, noteNumber, velocity) {
     var h = this.h;
     var n = this.n;
     var v = this.v;
-    var x = keyboxes[n].x + keypan + bw * modoff + bw * notefrac;
+    var x = keyboxes[n].x + keypan + bw * modoff +
+            bw * notefrac[channel];
 
     this.y -= dy * dt / framerate;
     if (this.playing == true) {
@@ -1955,6 +2134,12 @@ function drawfft() {
 ctx.font = '11px sans-serif';
 function animate(timestamp) {
   var dt = timestamp - lasttime;
+  if (playing && visible) {
+    tsnow += dt;
+    if (smf >= 0 && tsnext <= tsnow) {
+      playevents(filelist[smf]);
+    }
+  }
   requestAnimationFrame(animate);
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   // webkit is missing getFloatTimeDomainData, just use 0 if missing
@@ -1966,7 +2151,7 @@ function animate(timestamp) {
   }
   modoff = lfdata[0] / 100;
   // update particles
-  for (var i = 0, j = particles.length; i < j; i++) {
+  for (var i = 0, j = particles.length; visible && i < j; i++) {
     particles[i].update();
   }
   // delete particles that fall off screen
@@ -1981,7 +2166,7 @@ function animate(timestamp) {
   }
   if (keyalpha > 0)
     drawkeyboard();
-  for (var i = 0, j = noteboxes.length; i < j; i++) {
+  for (var i = 0, j = noteboxes.length; visible && i < j; i++) {
     noteboxes[i].update(dt);
   }
   // delete noteboxes that scroll off screen
