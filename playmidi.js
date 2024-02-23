@@ -1230,6 +1230,7 @@ function mousewheel(event) {
 }
 
 var oldx = -1;
+var oldy = -1;
 var olddist = -1;
 var oldxc = -1;
 
@@ -1245,15 +1246,21 @@ function handletouch(event) {
     if (event.touches[0].clientY < dh - kh - 2) {
       // have a single touch above the kbd, track for 1 touch kbd panning
       var x = event.touches[0].clientX;
+      var y = event.touches[0].clientY;
       if (oldx >= 0) {
         updatekeypan(oldx, 1.0, x);
         makekeys();
       }
+      // allow scrolling midi text with primary mouse drag
+      if (oldy >= 0) {
+        textscroll += y - oldy;
+      }
       oldx = x;
+      oldy = y;
       return;
     }
   }
-  oldx = -1;
+  oldx = oldy = -1;
   if (count == 2) {
     var kbd = dh - kh - 2;
     if (event.touches[0].clientY < kbd && event.touches[1].clientY < kbd) {
@@ -2222,7 +2229,7 @@ function drawkeyboard() {
 }
 
 function NoteBox(channel, noteNumber, velocity) {
-  this.y = canvas.height - kh;
+  this.y = 0;
   this.h = 1;
   this.channel = channel;
   this.n = noteNumber;
@@ -2239,18 +2246,18 @@ function NoteBox(channel, noteNumber, velocity) {
     var mo = (this.playing ? modoff : 0);
     var x = keyboxes[n].x + keypan + bw * mo + bw * nf;
 
-    this.y -= dy * dt / framerate;
+    this.y += dy * dt / framerate;
     if (this.playing == true) {
       this.h += dy * dt / framerate;
       if (this.h > dh - kh) {
         // clip tall notes to viewing area
         this.h = dh - kh;
-        this.y = 0;
+        this.y = this.h;
       }
     }
     ctx.fillStyle = this.pfill + (88 + v).toString(16);
     ctx.strokeStyle = this.pfill + 'ff';
-    ctx.roundRect(x, y, keyboxes[n].w, h, bw);
+    ctx.roundRect(x, dh - kh - y, keyboxes[n].w, h, bw);
     ctx.fill();
     ctx.stroke();
   }
@@ -2331,7 +2338,7 @@ function animate(timestamp) {
   }
   // delete noteboxes that scroll off screen
   for (var i = noteboxes.length - 1; i >= 0; i--) {
-    if (noteboxes[i].y + noteboxes[i].h < 0) {
+    if (noteboxes[i].y > dh + noteboxes[i].h) {
       noteboxes.splice(i, 1);
     }
   }
