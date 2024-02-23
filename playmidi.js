@@ -43,6 +43,7 @@ var hold1 = new Array(16).fill(false);      // cc64
 var sostenuto = new Array(16).fill(false);  // cc66
 var sostenutolist = new Array(16).fill([]); // track notes on per ch
 var soft = new Array(16).fill(false);       // cc67
+var vpan = new Array(16).fill(64);          // cc0a (pan)
 var showoctaves = false;
 var showflames = false;
 var showfountain = false;
@@ -568,6 +569,9 @@ function handle_midi(e, d) {
         case midi_ctl.SOFT_PEDAL:
           cc67(channel, d[1]);
           break;
+        case midi_ctl.PAN:
+          cc0a(channel, d[1]);
+          break;
       }
       break;
     case midi_status.PITCH_BEND:
@@ -576,12 +580,12 @@ function handle_midi(e, d) {
 
     case midi_status.NOTEON:
       if (d[1] != 0) {  // if velocity != 0, this is a note-on message
-        noteOn(channel, d[0], d[1]);
+        noteOn(channel, d[0] + mt, d[1]);
         break;
       }
       // if velocity == 0, fall through to note off case
     case midi_status.NOTEOFF:
-      noteOff(channel, d[0], d[1]);
+      noteOff(channel, d[0] + mt, d[1]);
       break;
   }
 }
@@ -873,6 +877,8 @@ function stopAllNotes() {
   sostenuto.fill(false);
   sostenutolist.fill([]);
   soft.fill(false);
+  bendmult.fill(1);
+  notefrac.fill(0);
   // stop sounds
   setSound(false);
   setSound(cfgform.soundon.checked);
@@ -960,6 +966,7 @@ function startDTMF(keyentry, plan) {
   voice[v].start = context.currentTime;
   voice[v].env.gain.cancelScheduledValues(0);
   voice[v].env.gain.setTargetAtTime(v1, 0, 0.005);
+  voice[v].vpan.pan.setValueAtTime(0, context.currentTime);
   keyentry.t1 = v;
   v = nextNote();
   voice[v].note = 256;
@@ -969,6 +976,7 @@ function startDTMF(keyentry, plan) {
   voice[v].start = context.currentTime;
   voice[v].env.gain.cancelScheduledValues(0);
   voice[v].env.gain.setTargetAtTime(v2, 0, 0.005);
+  voice[v].vpan.pan.setValueAtTime(0, context.currentTime);
   keyentry.t2 = v;
 }
 function startNote(channel, note, velocity) {
@@ -993,6 +1001,8 @@ function startNote(channel, note, velocity) {
   sustime = (sustime * 2) / 10;  // convert to time constant
   voice[i].env.gain.setTargetAtTime(0.001 / 127,
     context.currentTime + attack + decay, sustime); 
+  voice[i].vpan.pan.setValueAtTime((vpan[channel]/64) - 1,
+                                   context.currentTime);
 }
 function stopSustain(channel) {
   for (var i = 0; i < maxVoices; i++) {
@@ -1314,6 +1324,7 @@ function handletouch(event) {
 var keyspressed = [];
 var shiftpressed = false;
 var keytranspose = 60;
+var mt = 0;  // midi transpose (from javascript console)
 // table of event.code mapping to octave note offset
 // event.code names should be independent of keyboard layout
 // see: https://w3c.github.io/uievents-code/#key-alphanumeric-writing-system
@@ -1582,10 +1593,12 @@ function initaudio(event) {
     // set up the basic oscillator chain, muted to begin with.
     var oscillator = context.createOscillator();
     var envelope = context.createGain();
+    var vpan = context.createStereoPanner();
     oscillator.frequency.value = 0;
     oscillator.connect(envelope);
     lfo.env.connect(oscillator.detune);
-    envelope.connect(mastervol);
+    vpan.connect(mastervol);
+    envelope.connect(vpan);
     envelope.gain.value = 0.0;  // Mute the sound
     voice.push({
       start: -1,
@@ -1595,6 +1608,7 @@ function initaudio(event) {
       sostenuto: false,
       osc: oscillator,
       env: envelope,
+      vpan: vpan,
     });
   }
 }
@@ -1761,6 +1775,17 @@ function cc66(channel, value) {
 }
 function cc67(channel, value) {
   soft[channel] = (value >= 64);
+}
+function cc0a(channel, value) {
+  // 64 = center, 0 is hard left, 127 is hard right
+  vpan[channel] = value;
+  if (soundon) {
+    for (var i = 0; i < maxVoices; i++) {
+      if (voice[i].channel == channel)
+        voice[i].vpan.pan.setValueAtTime((vpan[channel]/64) - 1,
+                                         context.currentTime);
+    }
+  }
 }
 function noteOn(channel, noteNumber, velocity) {
   if (soft[channel])
