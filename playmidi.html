@@ -50,11 +50,15 @@
     input[type=file] { width:24em; }
     .active { background:#070; }
     #transport {
+      display:flex;
+      width:100%;
       position:fixed; bottom:0px; left:0px; right:0px;
       background:#000; color:#ccd; max-height:128px;
-      min-height:32px;
+      min-height:48px;
+      align-items:center;
     }
-    #transport input { height:32px; width:76px; }
+    #transport input { height:40px; width:72px; flex: 0 0 auto; }
+    #transport #filename {  background:#000; color:#ffd; flex: auto; }
   </style>
 </head>
 <body>
@@ -193,7 +197,6 @@ accept=".mid,.kar,.midi" onchange="handlefiles(this.files)" /></br>
 </div>
 <div id="transport">
 <input id="prev"  type="button" value="Prev"></input>
-<input id="pause" type="button" value="Pause"></input>
 <input id="play"  type="button" value="Play"></input>
 <input id="next"  type="button" value="Next"></input>
 <input id="loop"  type="button" value="Loop"></input>
@@ -202,6 +205,7 @@ accept=".mid,.kar,.midi" onchange="handlefiles(this.files)" /></br>
 <input id="tap"   type="button" value="Tap"></input>
 <label>Tempo:<input id="tempo" name="tempo" type="number" value="120"
 min="1" max="500" step="any"></input></label>
+<input id="filename" name="filename" value="" readonly></input>
 </div>
 <script type="text/javascript" src="playmidi.js"></script>
 </body>

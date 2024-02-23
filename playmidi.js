@@ -6,13 +6,13 @@ var filequeue = document.getElementById("filequeue");
 var transport = document.getElementById("transport");
 var settempo = document.getElementById("tempo");
 var prev = document.getElementById("prev");
-var pause = document.getElementById("pause");
 var play = document.getElementById("play");
 var next = document.getElementById("next");
 var loop = document.getElementById("loop");
 var sloop = document.getElementById("sloop");
 var eloop = document.getElementById("eloop");
 var taptempo = document.getElementById("tap");
+var filename = document.getElementById("filename");
 var filelist = [];
 var smf = -1; // current index into above array
 var tsnext = -1;  // timestamp (ms) next midifile event will play
@@ -37,11 +37,12 @@ var sustain=0.75;       // sustain level
 var release=0.15;	// release speed
 var mastertune=440;
 var maxVoices=24;
+var vMax = 1/2;         // max volume per voice
 var soundon = false;
-var hold1 = false;      // cc64
-var sostenuto = false;  // cc66
-var sostenutolist = []; // notes on at the time sostenuto pressed
-var soft = false;       // cc67
+var hold1 = new Array(16).fill(false);      // cc64
+var sostenuto = new Array(16).fill(false);  // cc66
+var sostenutolist = new Array(16).fill([]); // track notes on per ch
+var soft = new Array(16).fill(false);       // cc67
 var showoctaves = false;
 var showflames = false;
 var showfountain = false;
@@ -55,7 +56,7 @@ var notecounter;  // keep statistics per channel for visual stats
 var counterbase;  // keep track of when statistics were started
 function resetstats() {
   counterbase = 0; // start time for notes per second calculation
-  notecounter = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0];  // per channel
+  notecounter = new Array(16).fill(0);  // per channel
 }
 resetstats();
 
@@ -230,6 +231,25 @@ var midi_nrpn = {
 
 var cmdlen = [0, 0, 0, 0, 0, 0, 0, 0, 2, 2, 2, 2, 1, 1, 2, 0];
 var maxticks = Number.MAX_SAFE_INTEGER;
+// for converting legacy dos characters to unicode
+var cp437 = [
+  0x00c7, 0x00fc, 0x00e9, 0x00e2, 0x00e4, 0x00e0, 0x00e5, 0x00e7,
+  0x00ea, 0x00eb, 0x00e8, 0x00ef, 0x00ee, 0x00ec, 0x00c4, 0x00c5,
+  0x00c9, 0x00e6, 0x00c6, 0x00f4, 0x00f6, 0x00f2, 0x00fb, 0x00f9,
+  0x00ff, 0x00d6, 0x00dc, 0x00a2, 0x00a3, 0x00a5, 0x20a7, 0x0192,
+  0x00e1, 0x00ed, 0x00f3, 0x00fa, 0x00f1, 0x00d1, 0x00aa, 0x00ba,
+  0x00bf, 0x2310, 0x00ac, 0x00bd, 0x00bc, 0x00a1, 0x00ab, 0x00bb,
+  0x2591, 0x2592, 0x2593, 0x2502, 0x2524, 0x2561, 0x2562, 0x2556,
+  0x2555, 0x2563, 0x2551, 0x2557, 0x255d, 0x255c, 0x255b, 0x2510,
+  0x2514, 0x2534, 0x252c, 0x251c, 0x2500, 0x253c, 0x255e, 0x255f,
+  0x255a, 0x2554, 0x2569, 0x2566, 0x2560, 0x2550, 0x256c, 0x2567,
+  0x2568, 0x2564, 0x2565, 0x2559, 0x2558, 0x2552, 0x2553, 0x256b,
+  0x256a, 0x2518, 0x250c, 0x2588, 0x2584, 0x258c, 0x2590, 0x2580,
+  0x03b1, 0x00df, 0x0393, 0x03c0, 0x03a3, 0x03c3, 0x00b5, 0x03c4,
+  0x03a6, 0x0398, 0x03a9, 0x03b4, 0x221e, 0x03c6, 0x03b5, 0x2229,
+  0x2261, 0x00b1, 0x2265, 0x2264, 0x2320, 0x2321, 0x00f7, 0x2248,
+  0x00b0, 0x2219, 0x00b7, 0x221a, 0x207f, 0x00b2, 0x25a0, 0x00a0,
+];
 // make all the enum-like objects read-only
 if (Object.freeze) {
   Object.freeze(meta);
@@ -240,6 +260,7 @@ if (Object.freeze) {
   Object.freeze(midi_nrpn);
   Object.freeze(cmdlen);
   Object.freeze(maxticks);
+  Object.freeze(cp437);
 }
 
 var ccolor = [];
@@ -275,13 +296,17 @@ var keychan = 5;
 
 var noteboxes = [];
 var keyboxes = [];
+var textlines = [];
+var maxlines = 80;
+var textscroll = 0;
+var maxcols = 80;
 var particles = [];
 var maxparticles = 1000;
 var psize = 3;
 var gravity = 0.6;
 var midilog = [];  // log for all generated/received events
-var notefrac = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]; // tracking pitchbend
-var bendmult = [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]; // playing pitchbend
+var notefrac = new Array(16).fill(0); // tracking pitchbend
+var bendmult = new Array(16).fill(1); // playing pitchbend
 var bendup = 2;  // pitchbend range in semitones
 var benddn = 2;  // pitchbend range in semitones
 var keybed = 69.81818182; // 128 key full size midi keyboard in inches
@@ -401,6 +426,9 @@ function loadmidi(midifile) {
           f.track[i].tick = readVLC(f.track[i]);
         }
       }
+      f.tracks = f.track.length; // limit in case of errors in file
+    } else {
+      f.tick = maxtick;
     }
     updatefilelist();
   });
@@ -414,8 +442,8 @@ function handlefiles(files) {
       type:-1,  // 0 = 1-track, 1 = multi-track, 2 = multi-1-track-songs
       tracks:0,  // number of tracks in file
       division:48,  // ticks per beat
-      tempo:120,  // bpm = 60000000 / microseconds per quarter
-      tempo_us:500000,  // tempo in microseconds per quarter
+      tempo:120,  // bpm = 60000 / milliseconds per quarter
+      tempo_ms:500,  // tempo in milliseconds per quarter
       time_n:4, // time signature numerator
       time_d:4, // time signature denominator
       tick:0, // current tick position
@@ -441,6 +469,8 @@ function updatefilelist() {
   }
   newhtml += '</ol>';
   filequeue.innerHTML = newhtml;
+  if (count > 0)
+    filename.value = "1. " + filelist[0].name;
 }
 function dragevent(event) {
   event.preventDefault();
@@ -455,15 +485,46 @@ function dragevent(event) {
     }
   }
 }
+function addText(type, text) {
+  var i, len = text.length;
+  var s = text.substr(0,1);
+  var f = text.substr(-1,1);
+  // continue the line without following 3 starting characters
+  if ((type == 1 || type == 5) && s != '\\' && s != '/' && s != '@') {
+    for (i = 0; i < textlines.length; i++) {
+      if (textlines[i].type == type &&
+          textlines[i].text.length + len < maxcols) {
+        textlines[i].text = textlines[i].text + text;
+        if (f == '\n')
+          textlines[i].type |= 0x80; // end current line
+        return;
+      }
+    }
+  }
+  textlines.push({
+    text:text,
+    type:type,
+  });
+  if (textlines.length > maxlines) {
+    textlines,shift();
+  }
+  // lock down previous lines of the same type
+  // to not trigger appending more text to them
+  for (i = 0; i < textlines.length  - 1; i++) {
+    if (textlines[i].type == type)
+      textlines[i].type |= 0x80;
+  }
+}
 function handle_meta(t, e, d, f) {
   switch (e) {
     case meta.END_OF_TRACK:
-      t.ticks = maxticks;
+      t.tick = maxticks;
       return;
     case meta.SET_TEMPO:
-      f.tempo_us = (d[0] << 16) | (d[1] << 8) | d[2];
-      f.tempo = 60000000 / f.tempo_us;
-      tempo.val = f.tempo.toFixed(1);
+      f.tempo_ms = ((d[0] << 16) | (d[1] << 8) | d[2]) / 1000;
+      f.tempo = (60000 / f.tempo_ms).toFixed(1);
+      tempo.val = f.tempo;
+      tempo.ms = tempo.avgms = f.tempo_ms;
       return;
     case meta.SEQUENCE_NUMBER:
     case meta.TEXT_EVENT:
@@ -475,8 +536,8 @@ function handle_meta(t, e, d, f) {
     case meta.CUE_POINT:
     case meta.PROGRAM_NAME:
     case meta.DEVICE_NAME:
-      console.log("meta 0x" + e.toString(16) + ": " +
-                  d.map(x => String.fromCharCode(x)).join(""));
+      addText(e, d.map(x => String.fromCharCode(
+                       x < 128 ? x : cp437[x - 128])).join(""));
       return;
     case meta.CHANNEL_PREFIX:
     case meta.SMPTE_OFFSET:
@@ -489,7 +550,8 @@ function handle_meta(t, e, d, f) {
 function handle_midi(e, d) {
   var command = e & 0xf0;
   var channel = e & 0x0f;
-  if (channel == 9)
+  // don't send drums to the soft synth (yet?)
+  if (soundon && channel == 9)
     return;
   switch (command) {
     case midi_status.CTL_CHANGE:
@@ -533,12 +595,14 @@ function playevents(f) {
     if (f.track[i].tick < mintick)
       mintick = f.track[i].tick;
   }
-  if (mintick == maxticks) {
-    // no remaining data, readVLC returns ~0 on fail
-    playing = false;
-    tsnext = tsnow = 0;
-  }
   f.tick = mintick;
+  if (mintick == maxticks) {
+    // no remaining data in file
+    nextMIDI();
+    return;
+  }
+  // mark ms start of tick 0 in division
+  tempo.first = tsnow - (f.tick % f.division) * f.tempo_ms / f.division;
   // handle all tracks with the same lowest delta tick count
   // lowest numbered track first
   do {
@@ -573,8 +637,9 @@ function playevents(f) {
           handle_midi(f.track[i].running_st, data);
         }
         // setup next tick for track
-        f.track[i].tick += readVLC(f.track[i]);
-        if (f.track[i].pos >= f.track[i].size)
+        if (f.track[i].pos < f.track[i].size)
+          f.track[i].tick += readVLC(f.track[i]);
+        else
           f.track[i].tick = maxticks;
         break; // check from track 0 again for more at mintick
       }
@@ -587,17 +652,70 @@ function playevents(f) {
     if (f.track[i].tick < mintick)
       mintick = f.track[i].tick;
   }
+  if (mintick == maxticks) {
+    // no remaining data in file
+    nextMIDI();
+    return;
+  }
   if (1 || f.division > 0) {
-    dms = (mintick - f.tick) * (f.tempo_us / 1000) / f.division;
+    dms = (mintick - f.tick) * f.tempo_ms / f.division;
   } else {
     // TODO: SMPTE timing
   }
-  tsnext += dms;
+  // wait for next event time if it's less than 40 secs, else squash
+  if (dms < 40096)
+    tsnext += dms;
 }
 var visible = true;
 function vischange(e) {
+  lasttime = document.timeline.currentTime;
   visible = (document.visibilityState === "visible");
+  if (!visible) {
+    stopAllNotes();
+  } else {
+    requestAnimationFrame(animate);
+  }
+}
+function prepMIDI(f) {
+  filename.value = (smf + 1) + ". " + f.name;
+  play.value = 'Play';
+  textlines = [];  // clear any text on screen
+  if (f.tick > 0 && f.type >= 0) {
+    // reset all internal positions to start of file
+    f.tick = 0;
+    f.tempo = 120;
+    f.tempo_ms = 500;
+    for (var i = 0; i < f.tracks; i++) {
+      f.track[i].running_st = 0;
+      f.track[i].pos = 0;
+      f.track[i].tick = readVLC(f.track[i]);
+    }
+  }
+  return f.type >= 0;
+}
+function prevMIDI() {
   tsnext = tsnow = 0;
+  stopAllNotes();
+  while (smf > 0) {
+    if (prepMIDI(filelist[--smf]))
+      break;
+  }
+  if (smf < 0) {
+    playing = false;
+    play.style.background="";
+  }
+}
+function nextMIDI() {
+  tsnext = tsnow = 0;
+  stopAllNotes();
+  while (smf + 1 < filelist.length) {
+    if (prepMIDI(filelist[++smf]))
+      break;
+  }
+  if (smf >= filelist.length) {
+    playing = false;
+    play.style.background="";
+  }
 }
 function uibutton(e) {
   var now = Date.now();
@@ -617,15 +735,22 @@ function uibutton(e) {
       tempo.first = now;
     tempo.last = now;
   } else if (e.target == play) {
-    tsnext = tsnow = 0;
     playing = !playing;
-    if (!playing) {
-      // TODO: stop all playing notes
+    if (playing) {
+      play.style.background="#ffd";
+    } else {
+      stopAllNotes();
+      play.value = 'Play';
+      play.style.background="";
       return;
     }
-    if (smf < 0 && filelist.length > 0) {
-      smf++;
+    if (smf < 0) {
+      nextMIDI();
     }
+  } else if (e.target == next) {
+    nextMIDI();
+  } else if (e.target == prev) {
+    prevMIDI();
   }
 }
 function enableevents() {
@@ -646,7 +771,6 @@ function enableevents() {
   canvas.addEventListener('touchmove', handletouch, opt);
   canvas.addEventListener('touchcancel', handletouch, opt);
   prev.addEventListener('click', uibutton, opt);
-  pause.addEventListener('click', uibutton, opt);
   play.addEventListener('click', uibutton, opt);
   next.addEventListener('click', uibutton, opt);
   loop.addEventListener('click', uibutton, opt);
@@ -733,15 +857,35 @@ function setSound(value) {
     return;
   for (var i = 0; i < maxVoices; i++) {
     if (voice[i].note >= 0) {
+      voice[i].note = -1;
+      voice[i].hold1 = false;
+      voice[i].soft = false;
+      voice[i].sostenuto = false;
       voice[i].env.gain.cancelScheduledValues(0);
       voice[i].env.gain.setTargetAtTime(0.0, 0, release);
     }
   }
   lfo.env.gain.value = 0;
 }
-function findNote(note) {
+function stopAllNotes() {
+  // turn off all controllers with state
+  hold1.fill(false);
+  sostenuto.fill(false);
+  sostenutolist.fill([]);
+  soft.fill(false);
+  // stop sounds
+  setSound(false);
+  setSound(cfgform.soundon.checked);
+  // make noteboxes end, keys not look pressed
+  for (var i = 0, j = noteboxes.length; i < j; i++)
+    noteboxes[i].playing = false;
+  for (var i = 0; i < kct; i++) {
+    keyboxes[i].pressed = false;
+  }
+}
+function findNote(note, channel) {
   for (i = 0; i < maxVoices; i++) {
-    if (voice[i].note == note)
+    if (voice[i].note == note && voice[i].channel == channel)
       return i;
   }
   return 0;
@@ -841,8 +985,8 @@ function startNote(channel, note, velocity) {
     voice[i].osc.start();
   voice[i].start = context.currentTime;
   voice[i].env.gain.cancelScheduledValues(0);
-  voice[i].env.gain.setTargetAtTime((velocity/127), 0, attack);
-  voice[i].env.gain.setTargetAtTime((sustain * velocity/127),
+  voice[i].env.gain.setTargetAtTime(vMax * (velocity/127), 0, attack);
+  voice[i].env.gain.setTargetAtTime(vMax * (sustain * velocity/127),
     context.currentTime + attack, decay);
   // 9 to 3.3 seconds of sustain to decay to -60dB
   var sustime = 9 * Math.exp(-note/128);
@@ -850,10 +994,12 @@ function startNote(channel, note, velocity) {
   voice[i].env.gain.setTargetAtTime(0.001 / 127,
     context.currentTime + attack + decay, sustime); 
 }
-function stopSustain() {
+function stopSustain(channel) {
   for (var i = 0; i < maxVoices; i++) {
-    if ((voice[i].hold1 && !hold1 && !voice[i].sostenuto) ||
-       (voice[i].sostenuto && !sostenuto)) {
+    if (voice[i].channel != channel)
+      continue;
+    if ((voice[i].hold1 && !hold1[channel] && !voice[i].sostenuto) ||
+       (voice[i].sostenuto && !sostenuto[channel])) {
       voice[i].sostenuto = false;
       voice[i].hold1 = false;
       voice[i].env.gain.cancelScheduledValues(0);
@@ -863,11 +1009,11 @@ function stopSustain() {
   }
 }
 function stopNote(channel, note) {
-  var i = findNote(note);
+  var i = findNote(note, channel);
   if (i >= 0) {
-    voice[i].hold1 = hold1;
-    if (sostenuto) {
-      voice[i].sostenuto = (sostenutolist.indexOf(note) >= 0);
+    voice[i].hold1 = hold1[channel];
+    if (sostenuto[channel]) {
+      voice[i].sostenuto = (sostenutolist[channel].indexOf(note) >= 0);
     }
     voice[i].note = -1;  // mark for early reuse even if sustained
     if (voice[i].hold1 || voice[i].sostenuto) {
@@ -990,20 +1136,23 @@ function getkey(x,y) {
 
 function mousemove(event) {
   event.preventDefault();
-  if (mousenote < 0) {
-    return;
-  }
-  var note = getkey(event.clientX, event.clientY);
-  if (note == mousenote) {
-    return;
-  }
   if (mousenote >= 0) {
-    noteOff(mousechan, mousenote, 64);
-    mousenote = -1;
+    var note = getkey(event.clientX, event.clientY);
+    if (note == mousenote) {
+      return;
+    }
+    if (mousenote >= 0) {
+      noteOff(mousechan, mousenote, 64);
+      mousenote = -1;
+    }
+    if (note >= 0) {
+      noteOn(mousechan, note, 127);
+      mousenote = note;
+    }
   }
-  if (note >= 0) {
-    noteOn(mousechan, note, 127);
-    mousenote = note;
+  // allow scrolling midi text with primary mouse drag
+  if (event.buttons & 1) {
+    textscroll += event.movementY;
   }
 }
 
@@ -1357,15 +1506,15 @@ function keyup(event) {
   if (showconfig) return;
   event.preventDefault();
   if (event.code == 'ControlLeft') {
-    cc67(keychan, soft ? 0 : 127);
+    cc67(keychan, soft[keychan] ? 0 : 127);
     return;
   }
   if (event.code == 'AltLeft') {
-    cc66(keychan, sostenuto ? 0 : 127);
+    cc66(keychan, sostenuto[keychan] ? 0 : 127);
     return;
   }
   if (event.code == 'ControlRight') {
-    cc64(keychan, hold1 ? 0 : 127);
+    cc64(keychan, hold1[keychan] ? 0 : 127);
     return;
   }
   var i = keyindex(event.code);
@@ -1496,11 +1645,11 @@ function deniedMIDI(err) {
   midiout = midiin = midictrl = null;
 }
 var tempo = {
-  val:0,
+  val:120,
   first:0,
   last:0,
-  avgms:0,
-  ms:0,
+  avgms:500,
+  ms:500,
   count:0,
   beats:0,
 }
@@ -1574,13 +1723,13 @@ function cc01(channel, value) {
   lfo.env.gain.value = moddepth * modwheel;
 }
 function cc64(channel, value) {
-  hold1 = (value >= 64);
-  if (!hold1) {
+  hold1[channel] = (value >= 64);
+  if (!hold1[channel]) {
     for (var i = 0; i < kct; i++)
       keyboxes[i].held = false;
     if (soundon) {
       // kill all the playing notes that got noteoff already
-      stopSustain();
+      stopSustain(channel);
     }
   }
 }
@@ -1588,25 +1737,26 @@ function cc66(channel, value) {
   sostenuto = (value >= 64);
   if (sostenuto) {
     // record notes currently on
-    sostenutolist = [];
+    sostenutolist[channel] = [];
     for (var i = 0; i < kct; i++) {
-      if (keyboxes[i].pressed)
-        sostenutolist.push(i);
+      if (keyboxes[i].pressed && keyboxes[i].channel == channel)
+        sostenutolist[channel].push(i);
     }
 
   } else {
     for (var i = 0; i < kct; i++) {
-      keyboxes[i].sostenuto = false;
+      if (keyboxes[i].channel == channel)
+        keyboxes[i].sostenuto = false;
     }
     if (soundon)
-      stopSustain();
+      stopSustain(channel);
   }
 }
 function cc67(channel, value) {
-  soft = (value >= 64);
+  soft[channel] = (value >= 64);
 }
 function noteOn(channel, noteNumber, velocity) {
-  if (soft)
+  if (soft[channel])
     velocity /= 3.0;
   noteboxes.push(new NoteBox(channel, noteNumber, velocity));
   if (noteNumber < kct) {
@@ -1631,10 +1781,10 @@ function noteOff(channel, noteNumber) {
   }
   if (noteNumber < kct) {
     keyboxes[noteNumber].pressed = false;
-    keyboxes[noteNumber].held = hold1;
+    keyboxes[noteNumber].held = hold1[channel];
     if (sostenuto) {
       keyboxes[noteNumber].sostenuto =
-        (sostenutolist.indexOf(noteNumber) >= 0);
+        (sostenutolist[channel].indexOf(noteNumber) >= 0);
     }
   }
   if (soundon) {
@@ -2085,8 +2235,9 @@ function NoteBox(channel, noteNumber, velocity) {
     var h = this.h;
     var n = this.n;
     var v = this.v;
-    var x = keyboxes[n].x + keypan + bw * modoff +
-            bw * notefrac[channel];
+    var nf = (this.playing ? notefrac[channel] : 0);
+    var mo = (this.playing ? modoff : 0);
+    var x = keyboxes[n].x + keypan + bw * mo + bw * nf;
 
     this.y -= dy * dt / framerate;
     if (this.playing == true) {
@@ -2132,15 +2283,24 @@ function drawfft() {
 }
 
 ctx.font = '11px sans-serif';
+var mindt = 100; // 100ms per frame min
 function animate(timestamp) {
   var dt = timestamp - lasttime;
-  if (playing && visible) {
+  lasttime = timestamp;
+  // if window is not visible, don't update
+  if (!visible)
+    return;
+  // if there was a gap in timing, squash it to zero
+  if (dt > mindt)
+    dt = 0;
+  requestAnimationFrame(animate);
+  if (playing) {
     tsnow += dt;
+    play.value = (tsnow / 1000).toFixed(1);
     if (smf >= 0 && tsnext <= tsnow) {
       playevents(filelist[smf]);
     }
   }
-  requestAnimationFrame(animate);
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   // webkit is missing getFloatTimeDomainData, just use 0 if missing
   if (lfout && lfout.getFloatTimeDomainData != undefined) {
@@ -2151,7 +2311,7 @@ function animate(timestamp) {
   }
   modoff = lfdata[0] / 100;
   // update particles
-  for (var i = 0, j = particles.length; visible && i < j; i++) {
+  for (var i = 0, j = particles.length; i < j; i++) {
     particles[i].update();
   }
   // delete particles that fall off screen
@@ -2166,7 +2326,7 @@ function animate(timestamp) {
   }
   if (keyalpha > 0)
     drawkeyboard();
-  for (var i = 0, j = noteboxes.length; visible && i < j; i++) {
+  for (var i = 0, j = noteboxes.length; i < j; i++) {
     noteboxes[i].update(dt);
   }
   // delete noteboxes that scroll off screen
@@ -2237,13 +2397,32 @@ function animate(timestamp) {
       }
     }
   }
-  if (tempo.val > 0) {
+  if (tempo.val > 10) {
     settempo.value = tempo.val;
+    var tick = timestamp - tempo.first;
+    if (playing) {
+      if (filelist[smf].tempo != tempo.val) {
+        filelist[smf].tempo_ms = 60000 / tempo.val;
+        filelist[smf].tempo = tempo.val;
+      }
+      tick = tsnow - tempo.first;
+    }
+    if (1 & Math.floor(tick / (tempo.ms / 2)))
+        taptempo.style.background="";
+      else
+        taptempo.style.background="#ffd";
   }
+  ctx.save()
+  ctx.font = '20px monospace';
+  for (var i = textlines.length - 1; i > 0; i--) {
+    var ty = dh - kh - 2 * keyscale - (textlines.length - i) * 20;
+    ctx.fillStyle = ccolor[textlines[i].type & 15];
+    ctx.fillText(textlines[i].text, 20, ty + textscroll);
+  }
+  ctx.restore()
   if (context.state == 'suspended') {
     ctx.fillStyle = '#fff';
     ctx.fillText('Audio context suspended: click or tap ' +
        'play (or here) to start...', 25, 65);
   }
-  lasttime = timestamp;
 };
