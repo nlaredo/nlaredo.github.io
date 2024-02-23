@@ -239,7 +239,8 @@ var cp437 = [
   0x00c9, 0x00e6, 0x00c6, 0x00f4, 0x00f6, 0x00f2, 0x00fb, 0x00f9,
   0x00ff, 0x00d6, 0x00dc, 0x00a2, 0x00a3, 0x00a5, 0x20a7, 0x0192,
   0x00e1, 0x00ed, 0x00f3, 0x00fa, 0x00f1, 0x00d1, 0x00aa, 0x00ba,
-  0x00bf, 0x2310, 0x00ac, 0x00bd, 0x00bc, 0x00a1, 0x00ab, 0x00bb,
+  0x00bf, 0xa9 /*0x2310*/,
+                  0x00ac, 0x00bd, 0x00bc, 0x00a1, 0x00ab, 0x00bb,
   0x2591, 0x2592, 0x2593, 0x2502, 0x2524, 0x2561, 0x2562, 0x2556,
   0x2555, 0x2563, 0x2551, 0x2557, 0x255d, 0x255c, 0x255b, 0x2510,
   0x2514, 0x2534, 0x252c, 0x251c, 0x2500, 0x253c, 0x255e, 0x255f,
@@ -429,7 +430,7 @@ function loadmidi(midifile) {
       }
       f.tracks = f.track.length; // limit in case of errors in file
     } else {
-      f.tick = maxtick;
+      f.tick = maxticks;
     }
     updatefilelist();
   });
@@ -1593,12 +1594,12 @@ function initaudio(event) {
     // set up the basic oscillator chain, muted to begin with.
     var oscillator = context.createOscillator();
     var envelope = context.createGain();
-    var vpan = context.createStereoPanner();
+    var pan = context.createStereoPanner();
     oscillator.frequency.value = 0;
     oscillator.connect(envelope);
     lfo.env.connect(oscillator.detune);
-    vpan.connect(mastervol);
-    envelope.connect(vpan);
+    pan.connect(mastervol);
+    envelope.connect(pan);
     envelope.gain.value = 0.0;  // Mute the sound
     voice.push({
       start: -1,
@@ -1608,8 +1609,17 @@ function initaudio(event) {
       sostenuto: false,
       osc: oscillator,
       env: envelope,
-      vpan: vpan,
+      vpan: pan,
     });
+  }
+  // set default panning for each channel randomly
+  for (i = 0; i < vpan.length; i++) {
+    vpan[i] = Math.floor(Math.random() * 128);
+    if (i == keychan || i == mousechan || i == touchchan) {
+      // for default non-midi sources, prefer center-ish-random
+      vpan[i] >>= 4;
+      vpan[i] += 60;
+    }
   }
 }
 function selectmidi() {
