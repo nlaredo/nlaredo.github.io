@@ -12,7 +12,6 @@ var loop = document.getElementById("loop");
 var sloop = document.getElementById("sloop");
 var eloop = document.getElementById("eloop");
 var taptempo = document.getElementById("tap");
-var txttempo = document.getElementById("tempo");
 var filename = document.getElementById("filename");
 var filelist = [];
 var smf = -1; // current index into above array
@@ -528,7 +527,7 @@ function handle_meta(t, e, d, f) {
     case meta.SET_TEMPO:
       f.tempo_ms = ((d[0] << 16) | (d[1] << 8) | d[2]) / 1000;
       f.tempo = (60000 / f.tempo_ms).toFixed(1);
-      tempo.val = f.tempo;
+      settempo.value = tempo.val = f.tempo;
       tempo.ms = tempo.avgms = f.tempo_ms;
       return;
     case meta.SEQUENCE_NUMBER:
@@ -769,8 +768,8 @@ function uibutton(e) {
     nextMIDI();
   } else if (e.target == prev) {
     prevMIDI();
-  } else if (e.target == txttempo) {
-    tempo.val = txttempo.value;
+  } else if (e.target == settempo) {
+    tempo.val = settempo.value;
     tempo.ms = tempo.avgms = 60000 / tempo.val;
   }
 }
@@ -797,7 +796,7 @@ function enableevents() {
   loop.addEventListener('click', uibutton, opt);
   sloop.addEventListener('click', uibutton, opt);
   eloop.addEventListener('click', uibutton, opt);
-  txttempo.addEventListener('change', uibutton, false);
+  settempo.addEventListener('change', uibutton, false);
   taptempo.addEventListener('click', uibutton, opt);
   filename.addEventListener('click', toggleconfig, opt);
   ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(
@@ -2492,7 +2491,7 @@ function animate(timestamp) {
   }
   if (tempo.val > 10) {
     // only update the tempo when user has not focused the element
-    if (!txttempo.matches(':focus'))
+    if (!settempo.matches(':focus'))
       settempo.value = tempo.val;
     var tick = timestamp - tempo.first;
     if (playing) {
