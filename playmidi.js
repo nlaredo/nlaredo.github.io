@@ -12,6 +12,7 @@ var loop = document.getElementById("loop");
 var sloop = document.getElementById("sloop");
 var eloop = document.getElementById("eloop");
 var taptempo = document.getElementById("tap");
+var txttempo = document.getElementById("tempo");
 var filename = document.getElementById("filename");
 var filelist = [];
 var smf = -1; // current index into above array
@@ -682,6 +683,8 @@ function vischange(e) {
   if (!visible) {
     stopAllNotes();
   } else {
+    // let next animation frame fix visible status
+    visible = false;
     requestAnimationFrame(animate);
   }
 }
@@ -766,6 +769,9 @@ function uibutton(e) {
     nextMIDI();
   } else if (e.target == prev) {
     prevMIDI();
+  } else if (e.target == txttempo) {
+    tempo.val = txttempo.value;
+    tempo.ms = tempo.avgms = 60000 / tempo.val;
   }
 }
 function enableevents() {
@@ -791,7 +797,9 @@ function enableevents() {
   loop.addEventListener('click', uibutton, opt);
   sloop.addEventListener('click', uibutton, opt);
   eloop.addEventListener('click', uibutton, opt);
+  txttempo.addEventListener('change', uibutton, false);
   taptempo.addEventListener('click', uibutton, opt);
+  filename.addEventListener('click', toggleconfig, opt);
   ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(
     function(e) { window.addEventListener(e, dragevent, false); });
   // enable midi events
@@ -2364,8 +2372,10 @@ function animate(timestamp) {
   var dt = timestamp - lasttime;
   lasttime = timestamp;
   // if window is not visible, don't update
-  if (!visible)
-    return;
+  if (!visible) {
+    visible = true;
+    dt = 0;
+  }
   requestAnimationFrame(animate);
   if (playing) {
     tsnow += dt;
@@ -2481,7 +2491,9 @@ function animate(timestamp) {
     }
   }
   if (tempo.val > 10) {
-    settempo.value = tempo.val;
+    // only update the tempo when user has not focused the element
+    if (!txttempo.matches(':focus'))
+      settempo.value = tempo.val;
     var tick = timestamp - tempo.first;
     if (playing) {
       if (filelist[smf].tempo != tempo.val) {
