@@ -554,6 +554,8 @@ function handle_meta(t, e, d, f) {
 function handle_midi(e, d) {
   var command = e & 0xf0;
   var channel = e & 0x0f;
+  // send event to any connected midi output
+  out_midi([].concat(e,d));
   // don't send drums to the soft synth (yet?)
   if (soundon && channel == 9)
     return;
@@ -849,6 +851,7 @@ function toggleconfig(event) {
     midiin = cfgform.midiin.value;
     midiout = cfgform.midiout.value;
     midictrl = cfgform.midictrl.value;
+    setMIDIPorts();
     if (showflames)
       resize();
   }
@@ -1674,6 +1677,7 @@ function connectMIDI() {
     });
   });
   selectmidi();  // update possible midi selections
+  setMIDIPorts();
 }
 function gotMIDI(midi) {
   midiAccess = midi;
@@ -1691,6 +1695,28 @@ var tempo = {
   ms:500,
   count:0,
   beats:0,
+}
+var OutMIDI = null;
+var CtrlMIDI = null;
+function setMIDIPorts() {
+  OutMIDI = CtrlMIDI = null;
+  if (midiAccess === null) {
+    return;
+  }
+  if (midiout != 'none' && midiout != null) {
+    OutMIDI = midiAccess.outputs.get(midiout);
+  }
+  if (midictrl != 'none' && midictrl != null) {
+    CtrlMIDI = midiAccess.outputs.get(midiout);
+  }
+}
+function out_midi(data) {
+  if (OutMIDI != null)
+    OutMIDI.send(data);
+}
+function ctrl_midi(data) {
+  if (CtrlMIDI != null)
+    CtrlMIDI.send(data);
 }
 function midimessage(event) {
   if (midiin != 'all' && event.target.id != midiin)
