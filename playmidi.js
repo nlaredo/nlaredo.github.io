@@ -297,6 +297,8 @@ var mousechan = 2;
 var keychan = 5;
 
 var noteboxes = [];
+var maxnoteboxes = 250;  // covers most "reasonable" songs
+var nbspeed = 1.0; // speed multiplier for noteboxes > max
 var keyboxes = [];
 var textlines = [];
 var maxlines = 80;
@@ -683,8 +685,8 @@ function vischange(e) {
 }
 function prepMIDI(f) {
   filename.value = (smf + 1) + ". " + f.name;
-  play.value = 'Play';
   textlines = [];  // clear any text on screen
+  tsnext = tsnow = 0;  // restart midi timesamp trackers
   if (f.tick > 0 && f.type >= 0) {
     // reset all internal positions to start of file
     f.tick = 0;
@@ -698,28 +700,35 @@ function prepMIDI(f) {
   }
   return f.type >= 0;
 }
+function stopMIDI() {
+  playing = false;
+  play.value = 'Play';
+  play.style.background="";
+}
 function prevMIDI() {
-  tsnext = tsnow = 0;
+  var stop = true;
   stopAllNotes();
   while (smf > 0) {
-    if (prepMIDI(filelist[--smf]))
+    if (prepMIDI(filelist[--smf])) {
+      stop = false;
       break;
+    }
   }
-  if (smf < 0) {
-    playing = false;
-    play.style.background="";
+  if (stop) {
+    stopMIDI();
   }
 }
 function nextMIDI() {
-  tsnext = tsnow = 0;
+  var stop = true;
   stopAllNotes();
   while (smf + 1 < filelist.length) {
-    if (prepMIDI(filelist[++smf]))
+    if (prepMIDI(filelist[++smf])) {
+      stop = false;
       break;
+    }
   }
-  if (smf >= filelist.length) {
-    playing = false;
-    play.style.background="";
+  if (stop) {
+    stopMIDI();
   }
 }
 function uibutton(e) {
@@ -745,8 +754,7 @@ function uibutton(e) {
       play.style.background="#ffd";
     } else {
       stopAllNotes();
-      play.value = 'Play';
-      play.style.background="";
+      stopMIDI();
       return;
     }
     if (smf < 0) {
@@ -1864,7 +1872,7 @@ ctx.roundRect = function(x,y,w,h,r) {
 
 var lasttime = 0;
 var fps = 0;
-var framerate = 1000.0 / 60.0;  // expected update 60fps
+var framerate = 1000.0 / (60 / 1.001);  // expected update 59.97fps
 
 var npos = 0;
 
@@ -2280,10 +2288,11 @@ function NoteBox(channel, noteNumber, velocity) {
     var nf = (this.playing ? notefrac[channel] : 0);
     var mo = (this.playing ? modoff : 0);
     var x = keyboxes[n].x + keypan + bw * mo + bw * nf;
+    var mult = dt / framerate;
 
-    this.y += dy * dt / framerate;
+    this.y += dy * mult * nbspeed;
     if (this.playing == true) {
-      this.h += dy * dt / framerate;
+      this.h += dy * mult * nbspeed;
       if (this.h > dh - kh) {
         // clip tall notes to viewing area
         this.h = dh - kh;
@@ -2325,16 +2334,12 @@ function drawfft() {
 }
 
 ctx.font = '11px sans-serif';
-var mindt = 100; // 100ms per frame min
 function animate(timestamp) {
   var dt = timestamp - lasttime;
   lasttime = timestamp;
   // if window is not visible, don't update
   if (!visible)
     return;
-  // if there was a gap in timing, squash it to zero
-  if (dt > mindt)
-    dt = 0;
   requestAnimationFrame(animate);
   if (playing) {
     tsnow += dt;
@@ -2368,6 +2373,16 @@ function animate(timestamp) {
   }
   if (keyalpha > 0)
     drawkeyboard();
+  if (maxnoteboxes > 0) {
+    var len = noteboxes.length;
+      nbspeed *= len / maxnoteboxes;
+      if (nbspeed < 1) {
+        nbspeed = 1;
+      }
+      if (nbspeed > 4000) {
+        nbspeed = 4000;
+      }
+  }
   for (var i = 0, j = noteboxes.length; i < j; i++) {
     noteboxes[i].update(dt);
   }
