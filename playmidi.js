@@ -108,7 +108,7 @@ var midi_sys = {
   SYSEX_END:0xf7,
   TIMING_CLOCK:0xf8,
   START:0xfa,
-  CONTINUNE:0xfb,
+  CONTINUE:0xfb,
   STOP:0xfc,
   ACTIVE_SENSING:0xfe,
   RESET:0xff,
@@ -510,7 +510,7 @@ function addText(type, text) {
     type:type,
   });
   if (textlines.length > maxlines) {
-    textlines,shift();
+    textlines.shift();
   }
   // lock down previous lines of the same type
   // to not trigger appending more text to them
@@ -551,46 +551,46 @@ function handle_meta(t, e, d, f) {
       console.log("meta 0x" + e.toString(16) + ": " + d);
   } 
 }
-function handle_midi(e, d) {
-  var command = e & 0xf0;
-  var channel = e & 0x0f;
+function handle_midi(d) {
+  var command = d[0] & 0xf0;
+  var channel = d[0] & 0x0f;
   // send event to any connected midi output
-  out_midi([].concat(e,d));
+  out_midi(d);
   // don't send drums to the soft synth (yet?)
   if (soundon && channel == 9)
     return;
   switch (command) {
     case midi_status.CTL_CHANGE:
-      switch(d[0]) {
+      switch(d[1]) {
         case midi_ctl.MODWHEEL:
-          cc01(channel, d[1]);
+          cc01(channel, d[2]);
           break;
         case midi_ctl.HOLD1:
-          cc64(channel, d[1]);
+          cc64(channel, d[2]);
           break;
         case midi_ctl.SOSTENUTO:
-          cc66(channel, d[1]);
+          cc66(channel, d[2]);
           break;
         case midi_ctl.SOFT_PEDAL:
-          cc67(channel, d[1]);
+          cc67(channel, d[2]);
           break;
         case midi_ctl.PAN:
-          cc0a(channel, d[1]);
+          cc0a(channel, d[2]);
           break;
       }
       break;
     case midi_status.PITCH_BEND:
-      pitchBend(channel, (d[1] << 7) | d[0]);
+      pitchBend(channel, (d[2] << 7) | d[1]);
       break;
 
     case midi_status.NOTEON:
-      if (d[1] != 0) {  // if velocity != 0, this is a note-on message
-        noteOn(channel, d[0] + mt, d[1]);
+      if (d[2] != 0) {  // if velocity != 0, this is a note-on message
+        noteOn(channel, d[1] + mt, d[2]);
         break;
       }
       // if velocity == 0, fall through to note off case
     case midi_status.NOTEOFF:
-      noteOff(channel, d[0] + mt, d[1]);
+      noteOff(channel, d[1] + mt, d[2]);
       break;
   }
 }
@@ -643,7 +643,7 @@ function playevents(f) {
         if (f.track[i].running_st < 0x80) {
           handle_meta(f.track[i], f.track[i].running_st, data, f);
         } else {
-          handle_midi(f.track[i].running_st, data);
+          handle_midi([].concat(f.track[i].running_st, data));
         }
         // setup next tick for track
         if (f.track[i].pos < f.track[i].size)
@@ -706,7 +706,7 @@ function prepMIDI(f) {
 }
 function stopMIDI() {
   playing = false;
-  play.value = 'Play';
+  play.value = 'Play\n' + (tsnow / 1000).toFixed(1);
   play.style.background="";
 }
 function prevMIDI() {
@@ -720,6 +720,7 @@ function prevMIDI() {
   }
   if (stop) {
     stopMIDI();
+    smf = -1;
   }
 }
 function nextMIDI() {
@@ -735,8 +736,21 @@ function nextMIDI() {
     stopMIDI();
   }
 }
+function playPause() {
+  playing = !playing;
+  if (playing) {
+    play.style.background="#ffd";
+  } else {
+    stopAllNotes();
+    stopMIDI();
+    return;
+  }
+  if (smf < 0) {
+    nextMIDI();
+  }
+}
 function uibutton(e) {
-  var now = Date.now();
+  var now = document.timeline.currentTime;
   if (e.target == taptempo) {
     tempo.beats++;
     tempo.count++;
@@ -753,17 +767,7 @@ function uibutton(e) {
       tempo.first = now;
     tempo.last = now;
   } else if (e.target == play) {
-    playing = !playing;
-    if (playing) {
-      play.style.background="#ffd";
-    } else {
-      stopAllNotes();
-      stopMIDI();
-      return;
-    }
-    if (smf < 0) {
-      nextMIDI();
-    }
+    playPause();
   } else if (e.target == next) {
     nextMIDI();
   } else if (e.target == prev) {
@@ -1725,68 +1729,43 @@ function ctrl_midi(data) {
   if (CtrlMIDI != null)
     CtrlMIDI.send(data);
 }
+var tclock = [];
 function midimessage(event) {
   if (midiin != 'all' && event.target.id != midiin)
     return;  // if user selected a device, ignore all the rest
-  var now = Math.floor(event.timeStamp);  // no data in fractional part
+  var now = (playing ? tsnow : document.timeline.currentTime);
   midilog.push({ data:event.data, src:event.target.id, time:now,
   });  // how big can this grow?
-  var channel = event.data[0] & 0x0f;
-  switch (event.data[0] & 0xf0) {
-    case midi_status.SYSTEM_PREFIX:
-      if (event.data[0] == midi_sys.START) {
-        tempo.beats = 0;
-      }
-      if (event.data[0] == midi_sys.TIMING_CLOCK) {
-        if  (tempo.beats % 24 < 12) {
-          taptempo.style.background="#ff0";
-        } else {
-          taptempo.style.background="";
-        }
-        tempo.beats++;
-        tempo.count++;
-        if (now > tempo.last) {
-          tempo.ms = now - tempo.last;
-          tempo.avgms = (now - tempo.first) / tempo.count;
-          if (Math.abs(tempo.ms - tempo.avgms) > 2) {
-            tempo.count = 0;  // restart long running avg
-            tempo.avgms = tempo.ms;
-          }
-          tempo.val = (2500 / tempo.avgms).toFixed(1);
-        }
-        if (tempo.count == 0)
-          tempo.first = now;
-        tempo.last = now;
-      }
-      break;
-    case midi_status.CTL_CHANGE:
-      switch(event.data[1]) {
-        case midi_ctl.MODWHEEL:
-          cc01(channel, event.data[2]);
-          break;
-        case midi_ctl.HOLD1:
-          cc64(channel, event.data[2]);
-          break;
-        case midi_ctl.SOSTENUTO:
-          cc66(channel, event.data[2]);
-          break;
-        case midi_ctl.SOFT_PEDAL:
-          cc67(channel, event.data[2]);
-          break;
-      }
-      break;
-    case midi_status.PITCH_BEND:
-      pitchBend(channel, (event.data[2] << 7) | event.data[1]);
-      break;
-    case midi_status.NOTEON:
-      if (event.data[2]!=0) {  // if velocity != 0, this is a note-on message
-        noteOn(channel, event.data[1], event.data[2]);
-        break;
-      }
-      // if velocity == 0, fall through to note off case
-    case midi_status.NOTEOFF:
-      noteOff(channel, event.data[1]);
-      break;
+  if (event.data[0] == midi_sys.START) {
+    tempo.beats = 0;
+    tempo.last = now;
+    if (!playing)
+      playPause();
+  } else if (event.data[0] == midi_sys.STOP) {
+    if (playing)
+      playPause();
+  } else if (event.data[0] == midi_sys.CONTINUE) {
+    if (!playing)
+      playPause();
+  } else if (event.data[0] == midi_sys.TIMING_CLOCK) {
+    if  (tempo.beats % 24 < 12) {
+      taptempo.style.background="#ff0";
+    } else {
+      taptempo.style.background="";
+    }
+    if (tempo.beats % 24 == 0) {
+      tempo.last = now;
+    }
+    tclock.push(now);
+    if (tclock.length > 24) {
+      tempo.avgms = tempo.ms = ((tclock[24] - tclock[0])).toFixed(2);
+      tempo.val = (60000 / tempo.avgms).toFixed(1);
+      tclock.shift();
+    }
+    tempo.beats++;
+    tempo.count++;
+  } else {
+    handle_midi(event.data);
   }
 }
 function cc01(channel, value) {
@@ -2378,7 +2357,7 @@ function animate(timestamp) {
   requestAnimationFrame(animate);
   if (playing) {
     tsnow += dt;
-    play.value = (tsnow / 1000).toFixed(1);
+    play.value = 'Pause\n' + (tsnow / 1000).toFixed(1);
     if (smf >= 0 && tsnext <= tsnow) {
       playevents(filelist[smf]);
     }
@@ -2501,7 +2480,7 @@ function animate(timestamp) {
       }
       tick = tsnow - tempo.first;
     }
-    if (1 & Math.floor(tick / (tempo.ms / 2)))
+    if (1 & Math.floor(tick / (tempo.avgms / 2)))
         taptempo.style.background="";
       else
         taptempo.style.background="#ffd";
