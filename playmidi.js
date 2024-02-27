@@ -345,7 +345,6 @@ whitekey.onload = function () { whiteimg = whitekey; };
 whitekey.src = "images/whitekey.png";
 
 resize();
-initaudio();
 function hexdump(a, offset, len) {
   if (!offset)
     offset = 0;
@@ -529,6 +528,7 @@ function handle_meta(t, e, d, f) {
       f.tempo = (60000 / f.tempo_ms).toFixed(1);
       settempo.value = tempo.val = f.tempo;
       tempo.ms = tempo.avgms = f.tempo_ms;
+      tempo.first = tsnow;
       return;
     case meta.SEQUENCE_NUMBER:
     case meta.TEXT_EVENT:
@@ -594,16 +594,20 @@ function handle_midi(d) {
       break;
   }
 }
-function playevents(f) {
-  var i;
+function nexttick(f) {
   var mintick = maxticks;
-  // find track with the lowest delta tick count
+  // find next lowest tick position
   for (i = 0; i < f.tracks; i++) {
     if (f.track[i].pos >= f.track[i].size)
       f.track[i].tick = maxticks;
     if (f.track[i].tick < mintick)
       mintick = f.track[i].tick;
   }
+  return mintick;
+}
+function playevents(f) {
+  var i;
+  var mintick = nexttick(f);
   f.tick = mintick;
   if (mintick == maxticks) {
     // no remaining data in file
@@ -653,14 +657,10 @@ function playevents(f) {
         break; // check from track 0 again for more at mintick
       }
     }
-  } while (i < f.tracks);
+    // find next lowest tick position
+    mintick = nexttick(f);
+  } while (mintick < f.ticks);
   var dms = 0;  // calculate milliseconds to next nearest event
-  // find track with the lowest delta tick count to schedule next
-  mintick = maxticks;
-  for (i = 0; i < f.tracks; i++) {
-    if (f.track[i].tick < mintick)
-      mintick = f.track[i].tick;
-  }
   if (mintick == maxticks) {
     // no remaining data in file
     nextMIDI();
@@ -668,6 +668,9 @@ function playevents(f) {
   }
   if (1 || f.division > 0) {
     dms = (mintick - f.tick) * f.tempo_ms / f.division;
+    if (dms < 0) {
+      dms = 0;
+    }
   } else {
     // TODO: SMPTE timing
   }
@@ -751,6 +754,7 @@ function playPause() {
 }
 function uibutton(e) {
   var now = document.timeline.currentTime;
+  if (showconfig) toggleconfig(e);
   if (e.target == taptempo) {
     tempo.beats++;
     tempo.count++;
@@ -823,6 +827,8 @@ function startaudio() {
 function toggleconfig(event) {
   // prevent form submit
   if (event) event.preventDefault();
+  if (context === null)
+    initaudio();
   if (context.state == 'suspended') {
     if (event.type == 'submit' || event.type == 'contextmenu' ||
       event.type == 'mouseup' || event.type == 'touchend') {
@@ -2363,14 +2369,16 @@ function animate(timestamp) {
     }
   }
   ctx.clearRect(0, 0, canvas.width, canvas.height);
-  // webkit is missing getFloatTimeDomainData, just use 0 if missing
-  if (lfout && lfout.getFloatTimeDomainData != undefined) {
-    lfout.getFloatTimeDomainData(lfdata);
-    if (showspect) {
-      drawfft();
+  if (context != null) {
+    // webkit is missing getFloatTimeDomainData, just use 0 if missing
+    if (lfout && lfout.getFloatTimeDomainData != undefined) {
+      lfout.getFloatTimeDomainData(lfdata);
+      if (showspect) {
+        drawfft();
+      }
     }
+    modoff = lfdata[0] / 100;
   }
-  modoff = lfdata[0] / 100;
   // update particles
   for (var i = 0, j = particles.length; i < j; i++) {
     particles[i].update();
@@ -2493,7 +2501,7 @@ function animate(timestamp) {
     ctx.fillText(textlines[i].text, 20, ty + textscroll);
   }
   ctx.restore()
-  if (context.state == 'suspended') {
+  if (context === null || context.state == 'suspended') {
     ctx.fillStyle = '#fff';
     ctx.fillText('Audio context suspended: click or tap ' +
        'play (or here) to start...', 25, 65);
