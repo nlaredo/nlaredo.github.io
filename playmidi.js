@@ -807,7 +807,7 @@ function enableevents() {
     function(e) { window.addEventListener(e, dragevent, false); });
   // enable midi events
   if (navigator.requestMIDIAccess)
-    navigator.requestMIDIAccess().then(gotMIDI, deniedMIDI);
+    navigator.requestMIDIAccess({sysex:true}).then(gotMIDI, deniedMIDI);
 }
 // start animation behind menu
 requestAnimationFrame(animate);
