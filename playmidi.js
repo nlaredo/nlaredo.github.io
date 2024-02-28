@@ -15,8 +15,8 @@ var taptempo = document.getElementById("tap");
 var filename = document.getElementById("filename");
 var filelist = [];
 var smf = -1; // current index into above array
-var tsnext = -1;  // timestamp (ms) next midifile event will play
-var tsnow = -1;   // timestamp (ms) of current animation frame
+var tsnext = 0;  // timestamp (ms) next midifile event will play
+var tsnow = 0;   // timestamp (ms) of current animation frame
 var playing = false;  // is a midi file currently being played?
 var ctx = canvas.getContext("2d");
 
@@ -605,8 +605,27 @@ function nexttick(f) {
   }
   return mintick;
 }
-function playevents(f) {
+
+var etime = 0;
+function playevents() {
+  var f = filelist[smf];
   var i;
+  if (!visible || !playing) {
+    etime = 0;
+    return;
+  }
+  do {
+    var now = performance.now();
+    if (etime == 0)
+      etime = now;
+    tsnow = tsnow + (now - etime);
+    etime = now;
+    if (tsnow < tsnext) {
+      // yield to main javascript event loop
+      setTimeout(playevents, 0);
+      return;
+    }
+  } while (0);
   var mintick = nexttick(f);
   f.tick = mintick;
   if (mintick == maxticks) {
@@ -614,8 +633,6 @@ function playevents(f) {
     nextMIDI();
     return;
   }
-  // mark ms start of tick 0 in division
-  tempo.first = tsnow - (f.tick % f.division) * f.tempo_ms / f.division;
   // handle all tracks with the same lowest delta tick count
   // lowest numbered track first
   do {
@@ -668,15 +685,16 @@ function playevents(f) {
   }
   if (1 || f.division > 0) {
     dms = (mintick - f.tick) * f.tempo_ms / f.division;
-    if (dms < 0) {
-      dms = 0;
-    }
   } else {
     // TODO: SMPTE timing
   }
   // wait for next event time if it's less than 40 secs, else squash
   if (dms < 40096)
     tsnext += dms;
+  dms = (tsnext - tsnow) - 1;
+  if (dms < 0)
+    dms = 0;
+  setTimeout(playevents, dms);
 }
 var visible = true;
 function vischange(e) {
@@ -693,7 +711,7 @@ function vischange(e) {
 function prepMIDI(f) {
   filename.value = (smf + 1) + ". " + f.name;
   textlines = [];  // clear any text on screen
-  tsnext = tsnow = 0;  // restart midi timesamp trackers
+  etime = tsnext = tsnow = 0;  // restart midi timesamp trackers
   if (f.tick > 0 && f.type >= 0) {
     // reset all internal positions to start of file
     f.tick = 0;
@@ -704,6 +722,9 @@ function prepMIDI(f) {
       f.track[i].pos = 0;
       f.track[i].tick = readVLC(f.track[i]);
     }
+  }
+  if (f.type >= 0) {
+    playevents();
   }
   return f.type >= 0;
 }
@@ -751,6 +772,7 @@ function playPause() {
   if (smf < 0) {
     nextMIDI();
   }
+  playevents();
 }
 function uibutton(e) {
   var now = document.timeline.currentTime;
@@ -1791,8 +1813,8 @@ function cc64(channel, value) {
   }
 }
 function cc66(channel, value) {
-  sostenuto = (value >= 64);
-  if (sostenuto) {
+  sostenuto[channel] = (value >= 64);
+  if (sostenuto[channel]) {
     // record notes currently on
     sostenutolist[channel] = [];
     for (var i = 0; i < kct; i++) {
@@ -2359,14 +2381,11 @@ function animate(timestamp) {
   if (!visible) {
     visible = true;
     dt = 0;
+    if (playing)
+      playevents();
   }
-  requestAnimationFrame(animate);
   if (playing) {
-    tsnow += dt;
     play.value = 'Pause\n' + (tsnow / 1000).toFixed(1);
-    if (smf >= 0 && tsnext <= tsnow) {
-      playevents(filelist[smf]);
-    }
   }
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   if (context != null) {
@@ -2506,4 +2525,5 @@ function animate(timestamp) {
     ctx.fillText('Audio context suspended: click or tap ' +
        'play (or here) to start...', 25, 65);
   }
+  requestAnimationFrame(animate);
 };
