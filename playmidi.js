@@ -305,8 +305,8 @@ var maxlines = 80;
 var textscroll = 0;
 var maxcols = 40;
 var particles = [];
-var maxparticles = 1000;
-var psize = 3;
+var maxparticles = 10;
+var psize = 1;
 var gravity = 0.6;
 var midilog = [];  // log for all generated/received events
 var notefrac = new Array(16).fill(0); // tracking pitchbend
@@ -320,6 +320,7 @@ var keyscale = 0.0;  // allow resizing of keyboard, 0.0 = scale to 88
 var keypan = 0;  // allow touch interface panning of the keyboard
 var keyalpha = 1; // allow making the keys disappear for streaming
 var keyshadow = false; // option to go crazy with context shadows
+var bgplay = false; // allow playback when window is not visible
 var kct = 128; // note: 68.818 inches for 128 keys, given 48 for 88
 var bw;  // black key width in pixels
 var kh;  // keyboard height in pixels
@@ -663,7 +664,7 @@ var etime = 0;
 function playevents() {
   var f = filelist[smf];
   var i;
-  if (!visible || !playing) {
+  if ((!visible && !bgplay) || !playing) {
     etime = 0;
     return;
   }
@@ -671,8 +672,12 @@ function playevents() {
     var now = performance.now();
     if (etime == 0)
       etime = now;
-    tsnow = tsnow + (now - etime);
+    var dt = now - etime;
+    tsnow = tsnow + dt;
     etime = now;
+    if (!visible && bgplay) {
+      updateNoteboxes(dt);
+    }
     if (tsnow < tsnext) {
       // yield to main javascript event loop
       setTimeout(playevents, 0);
@@ -935,6 +940,7 @@ function toggleconfig(event) {
     psize = cfgform.psize.value;
     maxparticles = cfgform.maxparticles.value;
     keyshadow = cfgform.keyshadow.checked;
+    bgplay = cfgform.bgplay.checked;
     for (var i = 0; i < 15; i++) {
       ccolor[i] = cfgform["c"+(i+1)].value;
     }
@@ -2428,6 +2434,28 @@ function drawfft() {
   }
 }
 
+function updateNoteboxes(dt) {
+  if (maxnoteboxes > 0) {
+    var len = noteboxes.length;
+      nbspeed *= len / maxnoteboxes;
+      if (nbspeed < 1) {
+        nbspeed = 1;
+      }
+      if (nbspeed > 4000) {
+        nbspeed = 4000;
+      }
+  }
+  for (var i = 0, j = noteboxes.length; i < j; i++) {
+    noteboxes[i].update(dt);
+  }
+  // delete noteboxes that scroll off screen
+  for (var i = noteboxes.length - 1; i >= 0; i--) {
+    if (noteboxes[i].y > dh + noteboxes[i].h) {
+      noteboxes.splice(i, 1);
+    }
+  }
+}
+
 ctx.font = '11px sans-serif';
 function animate(timestamp) {
   var dt = timestamp - lasttime;
@@ -2469,25 +2497,7 @@ function animate(timestamp) {
   }
   if (keyalpha > 0)
     drawkeyboard();
-  if (maxnoteboxes > 0) {
-    var len = noteboxes.length;
-      nbspeed *= len / maxnoteboxes;
-      if (nbspeed < 1) {
-        nbspeed = 1;
-      }
-      if (nbspeed > 4000) {
-        nbspeed = 4000;
-      }
-  }
-  for (var i = 0, j = noteboxes.length; i < j; i++) {
-    noteboxes[i].update(dt);
-  }
-  // delete noteboxes that scroll off screen
-  for (var i = noteboxes.length - 1; i >= 0; i--) {
-    if (noteboxes[i].y > dh + noteboxes[i].h) {
-      noteboxes.splice(i, 1);
-    }
-  }
+  updateNoteboxes(dt);
   ctx.beginPath();  // seems required to stop artifact
   // draw red line at the top of keys
   ctx.fillStyle = '#f00';
