@@ -610,7 +610,7 @@ function handle_midi(d) {
   // send event to any connected midi output
   out_midi(d);
   // don't send drums to the soft synth (yet?)
-  if (soundon && channel == 9)
+  if (soundon && (channel == 9 || context === null))
     return;
   switch (command) {
     case midi_status.CTL_CHANGE:
@@ -1286,6 +1286,7 @@ function mouseup(event) {
 function mousedown(event) {
   event.preventDefault();
   var note;
+  if (showconfig) toggleconfig(event);
   if (mousenote >= 0) {
     noteOff(mousechan, mousenote, 64);
     mousenote = -1;
