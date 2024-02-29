@@ -303,7 +303,7 @@ var keyboxes = [];
 var textlines = [];
 var maxlines = 80;
 var textscroll = 0;
-var maxcols = 80;
+var maxcols = 40;
 var particles = [];
 var maxparticles = 1000;
 var psize = 3;
@@ -488,12 +488,18 @@ function dragevent(event) {
     }
   }
 }
+var lasttext = {};
 function addText(type, text) {
   var i, len = text.length;
   var s = text.substr(0,1);
   var f = text.substr(-1,1);
-  // continue the line without following 3 starting characters
-  if ((type == 1 || type == 5) && s != '\\' && s != '/' && s != '@') {
+  // squash duplicate lines
+  if (lasttext[type] == text)
+    return;
+  lasttext[type] = text;
+  // continue the line if it starts with lower case or space
+  if ((type == meta.TEXT_EVENT || type == meta.LYRIC) &&
+      ((s >= 'a' && s <= 'z') || s == ' ' || type == meta.LYRIC)) {
     for (i = 0; i < textlines.length; i++) {
       if (textlines[i].type == type &&
           textlines[i].text.length + len < maxcols) {
@@ -518,10 +524,17 @@ function addText(type, text) {
       textlines[i].type |= 0x80;
   }
 }
-function handle_meta(t, e, d, f) {
+var majflat = ["C", "F", "Bb", "Eb", "Ab", "Db", "Gb", "Cb"];
+var majsharp = ["C", "G", "D", "A", "E", "B", "F#", "C#"];
+var minflat = ["A", "D", "G", "C", "F", "Bb", "Eb", "Ab"];
+var minsharp = ["A", "E", "B", "F#", "C#", "G#", "D#", "A#"];
+function handle_meta(i, e, d, f) {
+  var txt = d.map(x => String.fromCharCode(
+                  x < 128 ? x : cp437[x - 128])).join("");
+  var hex = d.map(x => ("0" + x.toString(16)).slice(-2)).join(" ");
   switch (e) {
     case meta.END_OF_TRACK:
-      t.tick = maxticks;
+      f.track[i].tick = maxticks;
       return;
     case meta.SET_TEMPO:
       f.tempo_ms = ((d[0] << 16) | (d[1] << 8) | d[2]) / 1000;
@@ -529,26 +542,66 @@ function handle_meta(t, e, d, f) {
       settempo.value = tempo.val = f.tempo;
       tempo.ms = tempo.avgms = f.tempo_ms;
       tempo.first = tsnow;
+      addText(e, "tempo: " + f.tempo + " bpm (" + tempo.ms + "ms)");
+      return;
+    case meta.TEXT_EVENT:
+    case meta.LYRIC:
+      addText(e, txt);
+      return;
+    case meta.COPYRIGHT_NOTICE:
+      addText(e, "copyright: " + txt);
+      return;
+    case meta.SEQUENCE_NAME:
+      addText(e, "track " + i + " name: " + txt);
+      return;
+    case meta.INSTRUMENT_NAME:
+      addText(e, "track " + i + " instrument: " + txt);
+      return;
+    case meta.MARKER:
+      if (txt.length > 4 || d[0] < 127)
+        addText(e, "marker: " + txt);
+      else
+        addText(e, "marker: " + hex);
+      return;
+    case meta.CUE_POINT:
+      addText(e, i + " cue: " + txt);
+      return;
+    case meta.PROGRAM_NAME:
+      addText(e, "program " + i + " name: " + txt);
+      return;
+    case meta.DEVICE_NAME:
+      addText(e, "device " + i + " name: " + txt);
       return;
     case meta.SEQUENCE_NUMBER:
-    case meta.TEXT_EVENT:
-    case meta.COPYRIGHT_NOTICE:
-    case meta.SEQUENCE_NAME:
-    case meta.INSTRUMENT_NAME:
-    case meta.LYRIC:
-    case meta.MARKER:
-    case meta.CUE_POINT:
-    case meta.PROGRAM_NAME:
-    case meta.DEVICE_NAME:
-      addText(e, d.map(x => String.fromCharCode(
-                       x < 128 ? x : cp437[x - 128])).join(""));
+      addText(e, "sequence " + i + " number: " + hex);
       return;
     case meta.CHANNEL_PREFIX:
+      addText(e, "track " + i + " channel: " + (d[0] + 1));
+      return;
     case meta.SMPTE_OFFSET:
+      addText(e, "smpte offset: " + hex);
+      return;
     case meta.TIME_SIGNATURE:
+      addText(e, "time signature: " + d[0] + "/" + (1 << d[1]));
+      return;
     case meta.KEY_SIGNATURE:
+      if (d[0] > 0x80)
+        d[0] = d[0] - 256;  // convert to 2s compliment
+      if (d[0] < -7 && d[0] > 7)
+        return;  // invalid sf byte
+      if (d[1] > 1)
+        return;  // invalid maj/minor flag
+      if (d[1] == 0) {  // major key
+        var key = (d[0] < 0 ? majflat[-d[0]] : majsharp[d[0]]);
+        addText(e, "key: " + key + " major");
+      } else {
+        var key = (d[0] < 0 ? minflat[-d[0]] : minsharp[d[0]]);
+        addText(e, "key: " + key + " minor");
+      }
+      return;
     case meta.SEQUENCER_SPECIFIC:
-      console.log("meta 0x" + e.toString(16) + ": " + d);
+      addText(e, "sequencer specific: " + hex);
+      return;
   } 
 }
 function handle_midi(d) {
@@ -662,7 +715,7 @@ function playevents() {
           data.push(read8(f.track[i]));
         }
         if (f.track[i].running_st < 0x80) {
-          handle_meta(f.track[i], f.track[i].running_st, data, f);
+          handle_meta(i, f.track[i].running_st, data, f);
         } else {
           handle_midi([].concat(f.track[i].running_st, data));
         }
@@ -711,6 +764,7 @@ function vischange(e) {
 function prepMIDI(f) {
   filename.value = (smf + 1) + ". " + f.name;
   textlines = [];  // clear any text on screen
+  lasttext = {};  // clear any history
   etime = tsnext = tsnow = 0;  // restart midi timesamp trackers
   if (f.tick > 0 && f.type >= 0) {
     // reset all internal positions to start of file
@@ -2513,10 +2567,10 @@ function animate(timestamp) {
         taptempo.style.background="#ffd";
   }
   ctx.save()
-  ctx.font = '20px monospace';
+  ctx.font = '14px monospace';
   for (var i = textlines.length - 1; i > 0; i--) {
-    var ty = dh - kh - 2 * keyscale - (textlines.length - i) * 20;
-    ctx.fillStyle = ccolor[textlines[i].type & 15];
+    var ty = dh - kh - 2 * keyscale - (textlines.length - i) * 16;
+    ctx.fillStyle = ccolor[1 + (textlines[i].type & 7)];
     ctx.fillText(textlines[i].text, 20, ty + textscroll);
   }
   ctx.restore()
