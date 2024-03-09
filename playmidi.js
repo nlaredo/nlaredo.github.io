@@ -43,7 +43,8 @@ var hold1 = new Array(16).fill(false);      // cc64
 var sostenuto = new Array(16).fill(false);  // cc66
 var sostenutolist = new Array(16).fill([]); // track notes on per ch
 var soft = new Array(16).fill(false);       // cc67
-var vpan = new Array(16).fill(64);          // cc0a (pan)
+var vpan = new Array(16).fill(64);          // cc10 (pan)
+var exp = new Array(16).fill(127);          // cc11 (expression)
 var showoctaves = false;
 var showflames = false;
 var showfountain = false;
@@ -653,7 +654,10 @@ function handle_midi(d) {
           cc67(channel, d[2]);
           break;
         case midi_ctl.PAN:
-          cc0a(channel, d[2]);
+          cc10(channel, d[2]);
+          break;
+        case midi_ctl.EXPRESSION:
+          cc11(channel, d[2]);
           break;
       }
       break;
@@ -1015,6 +1019,7 @@ function stopAllNotes() {
   sostenuto.fill(false);
   sostenutolist.fill([]);
   soft.fill(false);
+  exp.fill(127);
   bendmult.fill(1);
   notefrac.fill(0);
   // stop sounds
@@ -1120,6 +1125,7 @@ function startDTMF(keyentry, plan) {
 function startNote(channel, note, velocity) {
   var i = nextNote(note);
   voice[i].note = note;
+  voice[i].velocity = velocity;
   voice[i].channel = channel;
   voice[i].freq = noteFreq(note);
   voice[i].hold1 = false;
@@ -1131,8 +1137,9 @@ function startNote(channel, note, velocity) {
     voice[i].osc.start();
   voice[i].start = context.currentTime;
   voice[i].env.gain.cancelScheduledValues(0);
-  voice[i].env.gain.setTargetAtTime(vMax * (velocity/127), 0, attack);
-  voice[i].env.gain.setTargetAtTime(vMax * (sustain * velocity/127),
+  velocity = velocity * exp[channel] / (127 * 127);
+  voice[i].env.gain.setTargetAtTime(vMax * velocity, 0, attack);
+  voice[i].env.gain.setTargetAtTime(vMax * (sustain * velocity),
     context.currentTime + attack, decay);
   // 9 to 3.3 seconds of sustain to decay to -60dB
   var sustime = 9 * Math.exp(-note/128);
@@ -1742,6 +1749,7 @@ function initaudio(event) {
     voice.push({
       start: -1,
       note: -1,
+      velocity: 0,
       freq: 0,
       hold1: false,
       sostenuto: false,
@@ -1922,14 +1930,27 @@ function cc66(channel, value) {
 function cc67(channel, value) {
   soft[channel] = (value >= 64);
 }
-function cc0a(channel, value) {
+function cc10(channel, value) {
   // 64 = center, 0 is hard left, 127 is hard right
   vpan[channel] = value;
   if (soundon) {
     for (var i = 0; i < maxVoices; i++) {
-      if (voice[i].channel == channel)
+      if (voice[i].channel == channel && voice[i].note >= 0)
         voice[i].vpan.pan.setValueAtTime((vpan[channel]/64) - 1,
                                          context.currentTime);
+    }
+  }
+}
+function cc11(channel, value) {
+  exp[channel] = value;
+  if (soundon) {
+     for (var i = 0; i < maxVoices; i++) {
+      if (voice[i].channel == channel && voice[i].note >= 0) {
+        var velocity = voice[i].velocity * exp[channel] / (127 * 127);
+        voice[i].env.gain.cancelScheduledValues(0);
+        voice[i].env.gain.setTargetAtTime(vMax * (sustain * velocity),
+                          context.currentTime, decay);
+      }
     }
   }
 }
