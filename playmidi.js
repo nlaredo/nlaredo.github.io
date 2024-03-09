@@ -36,7 +36,7 @@ var decay=0.05;	        // decay speed
 var sustain=0.75;       // sustain level
 var release=0.15;	// release speed
 var mastertune=440;
-var maxVoices=24;
+var maxVoices=64;
 var vMax = 1/2;         // max volume per voice
 var soundon = false;
 var hold1 = new Array(16).fill(false);      // cc64
@@ -57,7 +57,7 @@ var notecounter;  // keep statistics per channel for visual stats
 var counterbase;  // keep track of when statistics were started
 function resetstats() {
   counterbase = 0; // start time for notes per second calculation
-  notecounter = new Array(16).fill(0);  // per channel
+  notecounter = new Array(17).fill(0);  // per channel
 }
 resetstats();
 
@@ -314,10 +314,11 @@ makeccolor();
 var touchchan = 1;
 var mousechan = 2;
 var keychan = 5;
+var percussion = (1 << 9);
 
 var noteboxes = [];
 var maxnoteboxes = 250;  // covers most "reasonable" songs
-var nbspeed = 1.0; // speed multiplier for noteboxes > max
+var nbspeed = 1;  // speed multiplier for filling screen
 var keyboxes = [];
 var textlines = [];
 var maxlines = 80;
@@ -344,7 +345,6 @@ var kct = 128; // note: 68.818 inches for 128 keys, given 48 for 88
 var bw;  // black key width in pixels
 var kh;  // keyboard height in pixels
 var bkh; // black key height in pixels
-var dy;  // pixels to move up per animation frame
 var th = 32;  // transport area height
 var dw = canvas.width;  // drawing area height
 var dh = canvas.height - th;  // drawing area width
@@ -635,7 +635,7 @@ function handle_midi(d) {
   // send event to any connected midi output
   out_midi(d);
   // don't send drums to the soft synth (yet?)
-  if (soundon && (channel == 9 || context === null))
+  if (soundon && ((percussion & (1 << channel)) || context === null))
     return;
   switch (command) {
     case midi_status.CTL_CHANGE:
@@ -708,6 +708,7 @@ function playevents() {
       return;
     }
   } while (0);
+  do {
   var mintick = nexttick(f);
   f.tick = mintick;
   if (mintick == maxticks) {
@@ -773,6 +774,8 @@ function playevents() {
   // wait for next event time if it's less than 40 secs, else squash
   if (dms < 40096)
     tsnext += dms;
+  } while (tsnow > tsnext);
+  // take off 100ms for worst case timeout scheduling
   dms = (tsnext - tsnow) - 1;
   if (dms < 0)
     dms = 0;
@@ -1019,9 +1022,9 @@ function stopAllNotes() {
   setSound(cfgform.soundon.checked);
   // make noteboxes end, keys not look pressed
   for (var i = 0, j = noteboxes.length; i < j; i++)
-    noteboxes[i].playing = false;
+    noteboxes[i].playing = 0;
   for (var i = 0; i < kct; i++) {
-    keyboxes[i].pressed = false;
+    keyboxes[i].pressed = 0;
   }
 }
 function findNote(note, channel) {
@@ -1206,7 +1209,6 @@ function makekeys()
   bw = sw / kct;  // black key width in pixels
   kh = Math.round(keydepth * sw / keybed); // keyboard height (px)
   bkh = Math.round(bkeydepth * sw / keybed); // black height (px)
-  dy =  dh / 256;  // move 1/256 window height per frame
   var wpos = 0;
 
   keyboxes = [];
@@ -1227,12 +1229,13 @@ function makekeys()
 
     keyboxes.push({
       x: x,
+      bx: i * bw,
       y: y,
       w: w,
       h: h,
       v: 0,
       note: i,
-      pressed: false,
+      pressed: 0,
       sostenuto: false,
       isBlack: bk,
       fill: fill,
@@ -1903,7 +1906,7 @@ function cc66(channel, value) {
     // record notes currently on
     sostenutolist[channel] = [];
     for (var i = 0; i < kct; i++) {
-      if (keyboxes[i].pressed && keyboxes[i].channel == channel)
+      if (keyboxes[i].pressed & (1 << channel))
         sostenutolist[channel].push(i);
     }
 
@@ -1934,14 +1937,19 @@ function noteOn(channel, noteNumber, velocity) {
   if (soft[channel])
     velocity /= 3.0;
   noteboxes.push(new NoteBox(channel, noteNumber, velocity));
+  // make sure there aren't too many noteboxes
+  if (noteboxes.length > maxnoteboxes) {
+    noteboxes.splice(0, noteboxes.length - maxnoteboxes);
+  }
   if (noteNumber < kct) {
     keyboxes[noteNumber].v = velocity;
     keyboxes[noteNumber].ptime = context.currentTime;
-    keyboxes[noteNumber].pressed = true;
+    keyboxes[noteNumber].pressed |= (1 << channel);
     keyboxes[noteNumber].pfill = ccolor[channel] + '55';
     keyboxes[noteNumber].sfill = ccolor[channel];
   }
   notecounter[channel] += 1;
+  notecounter[16] += 1;
   if (counterbase <= 0) {  // baseline after reset on first midi note
     counterbase = context.currentTime;
   }
@@ -1952,10 +1960,15 @@ function noteOn(channel, noteNumber, velocity) {
 function noteOff(channel, noteNumber) {
   for (var i = 0, j = noteboxes.length; i < j; i++) {
     if (noteboxes[i].n == noteNumber && noteboxes[i].channel == channel)
-      noteboxes[i].playing = false;
+      noteboxes[i].playing &= ~(1 << channel);
   }
   if (noteNumber < kct) {
-    keyboxes[noteNumber].pressed = false;
+    keyboxes[noteNumber].pressed &= ~(1 << channel);
+    if (keyboxes[noteNumber].pressed) {
+      var ch = Math.floor(Math.log2(keyboxes[noteNumber].pressed));
+      keyboxes[noteNumber].pfill = ccolor[ch] + '55';
+      keyboxes[noteNumber].sfill = ccolor[ch];
+    }
     keyboxes[noteNumber].held = hold1[channel];
     if (sostenuto) {
       keyboxes[noteNumber].sostenuto =
@@ -1997,7 +2010,7 @@ ctx.roundRect = function(x,y,w,h,r) {
 
 var lasttime = 0;
 var fps = 0;
-var framerate = 1000.0 / (60 / 1.001);  // expected update 59.97fps
+var framerate = 1000.0 / (240 / 1.001);  // expected update 59.97fps
 
 var npos = 0;
 
@@ -2402,7 +2415,7 @@ function NoteBox(channel, noteNumber, velocity) {
   this.channel = channel;
   this.n = noteNumber;
   this.v = velocity;
-  this.playing = true;
+  this.playing |= (1 << channel);
   this.pfill = ccolor[channel];
 
   this.update = function(dt) {
@@ -2410,23 +2423,28 @@ function NoteBox(channel, noteNumber, velocity) {
     var h = this.h;
     var n = this.n;
     var v = this.v;
-    var nf = (this.playing ? notefrac[channel] : 0);
+    var ch = Math.floor(Math.log2(this.playing));
+    var nf = (this.playing ? notefrac[ch] : 0);
     var mo = (this.playing ? modoff : 0);
-    var x = keyboxes[n].x + keypan + bw * mo + bw * nf;
-    var mult = dt / framerate;
+    var x = keyboxes[n].bx + keypan + bw * mo + bw * nf;
+    var dy = dt / framerate;
 
-    this.y += dy * mult * nbspeed;
-    if (this.playing == true) {
-      this.h += dy * mult * nbspeed;
+    this.y += dy;
+    if (this.playing) {
+      this.h += dy;
       if (this.h > dh - kh) {
         // clip tall notes to viewing area
         this.h = dh - kh;
         this.y = this.h;
       }
     }
+    h = this.h * nbspeed;
+    y = this.y * nbspeed;
+    if (y - h > dh - kh)
+      return;
     ctx.fillStyle = this.pfill + (88 + v).toString(16);
     ctx.strokeStyle = this.pfill + 'ff';
-    ctx.roundRect(x, dh - kh - y, keyboxes[n].w, h, bw);
+    ctx.roundRect(x, dh - kh - y, bw, h - nbspeed, bw);
     ctx.fill();
     ctx.stroke();
   }
@@ -2459,17 +2477,15 @@ function drawfft() {
 }
 
 function updateNoteboxes(dt) {
-  if (maxnoteboxes > 0) {
-    var len = noteboxes.length;
-      nbspeed *= len / maxnoteboxes;
-      if (nbspeed < 1) {
-        nbspeed = 1;
-      }
-      if (nbspeed > 4000) {
-        nbspeed = 4000;
-      }
+  var len = noteboxes.length;
+  // if noteboxes aren't filling the screen zoom in so oldest starts at top
+  if (len >= maxnoteboxes && noteboxes[0].y < dh - kh &&
+      noteboxes[0].y > 0) {
+    nbspeed = (dh - kh)/noteboxes[0].y;
+  } else {
+    nbspeed = 1;
   }
-  for (var i = 0, j = noteboxes.length; i < j; i++) {
+  for (var i = 0; i < len; i++) {
     noteboxes[i].update(dt);
   }
   // delete noteboxes that scroll off screen
@@ -2535,7 +2551,7 @@ function animate(timestamp) {
     }
     if (keyboxes[i].pressed || keyboxes[i].held ||
       keyboxes[i].sostenuto) {
-      drawspark(keyboxes[i], context.currentTime);
+      //drawspark(keyboxes[i], context.currentTime);
     }
   }
   // draw fire on top of it all...
@@ -2575,9 +2591,12 @@ function animate(timestamp) {
   if (showstats) {
     var dt = context.currentTime - counterbase;
     var xsplit = dw / 18;
-    for (var i = 0; i < 16; i++) {
+    for (var i = 0; i < 17; i++) {
       if (notecounter[i] > 0) {
-        ctx.fillStyle = ccolor[i];
+        if (i < 16)
+          ctx.fillStyle = ccolor[i];
+        else
+          ctx.fillStyle = '#fff';
         ctx.fillText(notecounter[i], xsplit * (i + 1), 30);
         ctx.fillText((notecounter[i] / dt).toFixed(2) + ' nps',
                 xsplit * (i + 1), 45);
