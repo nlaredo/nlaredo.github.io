@@ -1001,6 +1001,8 @@ function setSound(value) {
   soundon = value;
   if (soundon)
     return;
+  if (context === null)
+    return;
   for (var i = 0; i < maxVoices; i++) {
     if (voice[i].note >= 0) {
       voice[i].note = -1;
