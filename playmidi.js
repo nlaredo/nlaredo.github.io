@@ -20,7 +20,13 @@ var tsnow = 0;   // timestamp (ms) of current animation frame
 var playing = false;  // is a midi file currently being played?
 var ctx = canvas.getContext("2d");
 
+class EmuMIDIProcessor extends AudioWorkletNode {
+  constructor(context) {
+    super(context, 'emumidi-processor');
+  }
+}
 var context=null;	// the Web Audio "context" object
+var emumidi=null;       // AudioWorkletNode
 var midiAccess=null;	// the MIDIAccess object.
 var voice = [];         // tracking of synth voices
 var lfo;                // for tracking synth LFO
@@ -1033,6 +1039,9 @@ function stopAllNotes() {
   for (var i = 0; i < kct; i++) {
     keyboxes[i].pressed = 0;
   }
+  // DEBUG
+  if (emumidi != null)
+    emumidi.port.postMessage(new Array(16).fill(0));
 }
 function findNote(note, channel) {
   for (i = 0; i < maxVoices; i++) {
@@ -1130,6 +1139,14 @@ function startNote(channel, note, velocity) {
   voice[i].velocity = velocity;
   voice[i].channel = channel;
   voice[i].freq = noteFreq(note);
+  // DEBUG
+  if (emumidi != null) {
+    var fdata = [];
+    for (var v = 0; v < maxVoices; v++)
+      if (voice[v].note >= 0) fdata.push(voice[v].freq);
+      else fdata.push(0);
+    emumidi.port.postMessage(fdata);
+  }
   voice[i].hold1 = false;
   voice[i].sostenuto = false;
   voice[i].osc.frequency.setValueAtTime(voice[i].freq *
@@ -1139,7 +1156,7 @@ function startNote(channel, note, velocity) {
     voice[i].osc.start();
   voice[i].start = context.currentTime;
   voice[i].env.gain.cancelScheduledValues(0);
-  velocity = velocity * exp[channel] / (127 * 127);
+  velocity = 0 * velocity * exp[channel] / (127 * 127);
   voice[i].env.gain.setTargetAtTime(vMax * velocity, 0, attack);
   voice[i].env.gain.setTargetAtTime(vMax * (sustain * velocity),
     context.currentTime + attack, decay);
@@ -1179,6 +1196,15 @@ function stopNote(channel, note) {
     voice[i].env.gain.cancelScheduledValues(0);
     voice[i].env.gain.setTargetAtTime(0.0, 0, release);
   }
+  // DEBUG
+  if (emumidi != null) {
+    var fdata = [];
+    for (var v = 0; v < maxVoices; v++)
+      if (voice[v].note >= 0) fdata.push(voice[v].freq);
+      else fdata.push(0);
+    emumidi.port.postMessage(fdata);
+  }
+
 }
 
 function resize()
@@ -1769,6 +1795,18 @@ function initaudio(event) {
       vpan[i] += 60;
     }
   }
+  context.audioWorklet.addModule('emumidi.js').then(() => {
+    emumidi = new EmuMIDIProcessor(context, 'emumidi-processor', {
+      numberOfInputs:0,
+      numberOfOutputs:1,
+      outputChannelCount: [2]
+    });
+    voice[0].vpan.connect(emumidi);
+    emumidi.connect(context.destination);
+    emumidi.onprocessorerror = (event) => {
+      console.error(event.message);
+    }
+  });
 }
 function selectmidi() {
   cfgform.midiin.options.length = 0;
