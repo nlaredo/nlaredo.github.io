@@ -16,6 +16,7 @@
 * [mandelbrot.html](mandelbrot.html) - mandelbrot viewer
 * [playmidi.html](playmidi.html) - record/play music in browser
 * [playmidi.js](playmidi.js) - javascript source to playmidi
+* [emumidi.js](emumidi.js) - WebAudio AudioWorkletProcessor soft synth
 * [teleprompter.html](teleprompter.html) - javascript teleprompter
 * [tuner.html](tuner.html) - musical tuner exercise from the coding train
 * [words.html](words.html) - game that plays like wordle, but with cheats
