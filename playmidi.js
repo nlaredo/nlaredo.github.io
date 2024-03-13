@@ -691,7 +691,7 @@ var visible = true;
 function vischange(e) {
   lasttime = document.timeline.currentTime;
   visible = (document.visibilityState === "visible");
-  if (!visible) {
+  if (!visible && !bgplay) {
     stopAllNotes();
   } else {
     // let next animation frame fix visible status
@@ -1068,11 +1068,11 @@ function mousemove(event) {
       return;
     }
     if (mousenote >= 0) {
-      noteOff(mousechan, mousenote, 64);
+      handle_midi([midi_status.NOTEON + mousechan, mousenote, 0]);
       mousenote = -1;
     }
     if (note >= 0) {
-      noteOn(mousechan, note, 127);
+      handle_midi([midi_status.NOTEON + mousechan, note, 127]);
       mousenote = note;
     }
   }
@@ -1090,7 +1090,7 @@ function mouseup(event) {
     toggleconfig(event);
   }
   if (mousenote >= 0) {
-    noteOff(mousechan, mousenote, 64);
+    handle_midi([midi_status.NOTEON + mousechan, mousenote, 0]);
     mousenote = -1;
   }
 }
@@ -1099,7 +1099,7 @@ function mousedown(event) {
   var note;
   if (showconfig) toggleconfig(event);
   if (mousenote >= 0) {
-    noteOff(mousechan, mousenote, 64);
+    handle_midi([midi_status.NOTEON + mousechan, mousenote, 0]);
     mousenote = -1;
   }
   // ignore if not in keyboard area
@@ -1109,7 +1109,7 @@ function mousedown(event) {
   }
   note = getkey(event.clientX, event.clientY);
   if (note >= 0) {
-    noteOn(mousechan, note, 127);
+    handle_midi([midi_status.NOTEON + mousechan, note, 127]);
     mousenote = note;
   }
 }
@@ -1224,7 +1224,8 @@ function handletouch(event) {
         force = 0.5;
       notes.push(note);
       if (touchnotes.indexOf(note) < 0) {
-        noteOn(touchchan, note, Math.round(force * 127));
+        handle_midi([midi_status.NOTEON + touchchan, note,
+                     Math.round(force * 127)]);
         touchnotes.push(note);
       }
     }
@@ -1232,7 +1233,7 @@ function handletouch(event) {
   // figure out if any touched notes went away or changed
   for (var i = touchnotes.length - 1; i >= 0; i--) {
     if (notes.indexOf(touchnotes[i]) < 0) {
-      noteOff(touchchan, touchnotes[i], 64);
+      handle_midi([midi_status.NOTEON + touchchan, touchnotes[i], 0]);
     }
   }
   touchnotes = [...notes];
@@ -1427,7 +1428,7 @@ function keydown(event) {
   if (n < 0 || n > 127)
     return;
   keytable[i].m = n;  // mark midi note playing for key
-  noteOn(keychan, n, 96);
+  handle_midi([midi_status.NOTEON + keychan, n, 127]);
 }
 
 function keyup(event) {
@@ -1471,7 +1472,7 @@ function keyup(event) {
   keytable[i].m = -1; // no midi note playing for key
   if (n < 0 || n > 127)
     return;   // octave keys also fall out here
-  noteOff(keychan, n, 64);
+  handle_midi([midi_status.NOTEON + keychan, n, 0]);
 }
 
 function initaudio(event) {

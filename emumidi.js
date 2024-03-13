@@ -191,7 +191,7 @@ class EmuMIDIProcessor extends AudioWorkletProcessor {
         a:0,    // attack in units of samples
         h:0,    // hold in units of samples
         d:0,    // decay in units of samples
-        s:0,    // velocity at which to sustain note (0.0-1.0)
+        s:1,    // velocity at which to sustain note (0.0-1.0)
         r:0,    // release in units of samples
         // sf2 access tracking
         phdr:0, // index into phdr chunk
@@ -218,6 +218,7 @@ class EmuMIDIProcessor extends AudioWorkletProcessor {
       });
       channel[i].ctl[CTL_PAN] = Math.floor(Math.random() * 127);
       channel[i].ctl[CTL_EXPRESSION] = 127;
+      channel[i].ctl[CTL_MAIN_VOLUME] = 127;
     }
     this.debug = false;
     this.waveform = 'square';
@@ -235,6 +236,7 @@ class EmuMIDIProcessor extends AudioWorkletProcessor {
           channel[i].ctl[CTL_PAN] = Math.floor(Math.random() * 127);
           channel[i].ctl[CTL_SUSTAIN] = 0;
           channel[i].ctl[CTL_EXPRESSION] = 127;
+          channel[i].ctl[CTL_MAIN_VOLUME] = 127;
         }
         // stop all notes
         for (let i = 0; i < POLYMAX; i++) {
