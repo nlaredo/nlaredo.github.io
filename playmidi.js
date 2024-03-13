@@ -28,7 +28,6 @@ class EmuMIDIProcessor extends AudioWorkletNode {
 var context=null;	// the Web Audio "context" object
 var emumidi=null;       // AudioWorkletNode
 var midiAccess=null;	// the MIDIAccess object.
-var voice = [];         // tracking of synth voices
 var lfo;                // for tracking synth LFO
 var lfout;              // for drawing LFO data
 var lfdata;
@@ -42,15 +41,8 @@ var decay=0.05;	        // decay speed
 var sustain=0.75;       // sustain level
 var release=0.15;	// release speed
 var mastertune=440;
-var maxVoices=64;
 var vMax = 1/2;         // max volume per voice
 var soundon = false;
-var hold1 = new Array(16).fill(false);      // cc64
-var sostenuto = new Array(16).fill(false);  // cc66
-var sostenutolist = new Array(16).fill([]); // track notes on per ch
-var soft = new Array(16).fill(false);       // cc67
-var vpan = new Array(16).fill(64);          // cc10 (pan)
-var exp = new Array(16).fill(127);          // cc11 (expression)
 var showoctaves = false;
 var showflames = false;
 var showfountain = false;
@@ -119,83 +111,6 @@ var midi_sys = {
   STOP:0xfc,
   ACTIVE_SENSING:0xfe,
   RESET:0xff,
-};
-var midi_ctl = {
-  BANK_SELECT:0x00,
-  MODWHEEL:0x01,
-  BREATH:0x02,
-  LFO_RATE:0x03,
-  FOOT:0x04,
-  PORTAMENTO_TIME:0x05,
-  DATA_ENTRY:0x06,
-  MAIN_VOLUME:0x07,
-  BALANCE:0x08,
-  PAN:0x0a,
-  EXPRESSION:0x0b,
-  MOTIONAL_CTL1:0x0c,
-  MOTIONAL_CTL2:0x0d,
-  MOTIONAL_CTL3:0x0e,
-  GEN_PURPOSE1:0x10,
-  TONE_MODIFY1:0x10,
-  GEN_PURPOSE2:0x11,
-  TONE_MODIFY2:0x11,
-  GEN_PURPOSE3:0x12,
-  GEN_PURPOSE4:0x13,
-  MOTIONAL_EXT1:0x1c,
-  MOTIONAL_EXT2:0x1d,
-  MOTIONAL_EXT3:0x1e,
-  LSB:0x20,  // all above have LSB at above value + 0x20
-  DAMPER_PEDAL:0x40,
-  SUSTAIN:0x40,
-  HOLD:0x40,
-  HOLD1:0x40,
-  PORTAMENTO:0x41,
-  SOSTENUTO:0x42,
-  SOFT_PEDAL:0x43,
-  LEGATO:0x44,
-  HOLD2:0x45,
-  // controllers 70-79 are *not* reset on "reset all controllers"
-  SOUND_VARIATION:0x46,
-  RESONANCE:0x47,
-  RELEASE_TIME:0x48,
-  ATTACK_TIME:0x49,
-  CUTOFF:0x4a,
-  BRIGHTNESS:0x4a,
-  DECAY_TIME:0x4b,
-  VIBRATO_RATE:0x4c,
-  VIBRATO_DEPTH:0x4d,
-  VIBRATO_DELAY:0x4e,
-  SOUND_CONTROLLER10:0x4f,
-  GEN_PURPOSE5:0x50,
-  TONE_VARIATION1:0x50,
-  GEN_PURPOSE6:0x51,
-  TONE_VARIATION2:0x51,
-  GEN_PURPOSE7:0x52,
-  TONE_VARIATION3:0x52,
-  GEN_PURPOSE8:0x53,
-  TONE_VARIATION4:0x53,
-  PORTAMENTO_CTRL:0x54,
-  VELOCITY_LSB:0x58,
-  // controllers 91 - 95 are *not* reset on "reset all controllers"
-  REVERB_DEPTH:0x5b,
-  TREMOLO_DEPTH:0x5c,
-  CHORUS_DEPTH:0x5d,
-  CELESTE_DEDPTH:0x5e,
-  PHASER_DEPTH:0x5f,
-  DATA_INCREMENT:0x60,
-  DATA_DECREMENT:0x61,
-  NRPN_LSB:0x62,
-  NRPN_MSB:0x63,
-  RPN_LSB:0x64,
-  RPN_MSB:0x65,
-  ALL_SOUNDS_OFF:0x78,  // third byte 0
-  RESET_ALL_CONTROLLERS:0x79, // third byte 0
-  LOCAL:0x7a, // 0 = local control off, 127 = local control on
-  ALL_NOTES_OFF:0x7b,  // third byte 0
-  OMNI_OFF:0x7c,  // third byte 0
-  OMNI_ON:0x7d,  // third byte 0
-  MONO:0x7e,  // third byte = number of channels, 0 = match voice count
-  POLY:0x7f,  // third byte 0
 };
 
 var midi_rpn = {
@@ -282,7 +197,6 @@ if (Object.freeze) {
   Object.freeze(meta);
   Object.freeze(midi_status);
   Object.freeze(midi_sys);
-  Object.freeze(midi_ctl);
   Object.freeze(midi_rpn);
   Object.freeze(midi_nrpn);
   Object.freeze(cmdlen);
@@ -347,7 +261,7 @@ var keyscale = 0.0;  // allow resizing of keyboard, 0.0 = scale to 88
 var keypan = 0;  // allow touch interface panning of the keyboard
 var keyalpha = 1; // allow making the keys disappear for streaming
 var keyshadow = false; // option to go crazy with context shadows
-var bgplay = false; // allow playback when window is not visible
+var bgplay = true; // allow playback when window is not visible
 var kct = 128; // note: 68.818 inches for 128 keys, given 48 for 88
 var bw;  // black key width in pixels
 var kh;  // keyboard height in pixels
@@ -641,32 +555,14 @@ function handle_midi(d) {
   var channel = d[0] & 0x0f;
   // send event to any connected midi output
   out_midi(d);
-  // don't send drums to the soft synth (yet?)
-  if (soundon && ((percussion & (1 << channel)) || context === null))
-    return;
+  // send event to soft synth
+  if (emumidi != null && soundon) {
+    emumidi.port.postMessage({
+      ts:(tsnow * context.sampleRate / 1000),
+      data:d
+      });
+  }
   switch (command) {
-    case midi_status.CTL_CHANGE:
-      switch(d[1]) {
-        case midi_ctl.MODWHEEL:
-          cc01(channel, d[2]);
-          break;
-        case midi_ctl.HOLD1:
-          cc64(channel, d[2]);
-          break;
-        case midi_ctl.SOSTENUTO:
-          cc66(channel, d[2]);
-          break;
-        case midi_ctl.SOFT_PEDAL:
-          cc67(channel, d[2]);
-          break;
-        case midi_ctl.PAN:
-          cc10(channel, d[2]);
-          break;
-        case midi_ctl.EXPRESSION:
-          cc11(channel, d[2]);
-          break;
-      }
-      break;
     case midi_status.PITCH_BEND:
       pitchBend(channel, (d[2] << 7) | d[1]);
       break;
@@ -873,6 +769,8 @@ function playPause() {
 function uibutton(e) {
   var now = document.timeline.currentTime;
   if (showconfig) toggleconfig(e);
+  if (emumidi == null)
+    return;
   if (e.target == taptempo) {
     tempo.beats++;
     tempo.count++;
@@ -963,6 +861,9 @@ function toggleconfig(event) {
     // validated form user is asking to dismiss
     setSound(cfgform.soundon.checked);
     waveform = cfgform.waveform.value;
+    if (emumidi != null) {
+      emumidi.port.postMessage(waveform);
+    }
     showdebug = cfgform.showdebug.checked;
     showoctaves = cfgform.showoctaves.checked;
     showstats = cfgform.showstats.checked;
@@ -1009,76 +910,24 @@ function setSound(value) {
     return;
   if (context === null)
     return;
-  for (var i = 0; i < maxVoices; i++) {
-    if (voice[i].note >= 0) {
-      voice[i].note = -1;
-      voice[i].hold1 = false;
-      voice[i].soft = false;
-      voice[i].sostenuto = false;
-      voice[i].env.gain.cancelScheduledValues(0);
-      voice[i].env.gain.setTargetAtTime(0.0, 0, release);
-    }
-  }
   lfo.env.gain.value = 0;
 }
 function stopAllNotes() {
-  // turn off all controllers with state
-  hold1.fill(false);
-  sostenuto.fill(false);
-  sostenutolist.fill([]);
-  soft.fill(false);
-  exp.fill(127);
-  bendmult.fill(1);
-  notefrac.fill(0);
-  // stop sounds
-  setSound(false);
-  setSound(cfgform.soundon.checked);
   // make noteboxes end, keys not look pressed
-  for (var i = 0, j = noteboxes.length; i < j; i++)
+  for (var i = 0, j = noteboxes.length; i < j; i++) {
     noteboxes[i].playing = 0;
+  }
   for (var i = 0; i < kct; i++) {
+    if (keyboxes[i].playing) {
+      for (var ch = 0; ch < 16; ch++) {
+        if (keyboxes[i].playing & (1 << ch))
+          handle_midi([midi_status.NOTEON + ch, i, 0]);
+      }
+    }
     keyboxes[i].pressed = 0;
   }
-  // DEBUG
   if (emumidi != null)
-    emumidi.port.postMessage(new Array(16).fill(0));
-}
-function findNote(note, channel) {
-  for (i = 0; i < maxVoices; i++) {
-    if (voice[i].note == note && voice[i].channel == channel)
-      return i;
-  }
-  return 0;
-}
-var steal = 0;
-function nextNote(note) {
-  var reuse = -1;
-  var oldest = -1;
-  for (var i = 0; i < maxVoices; i++) {
-    if (voice[i].note == note) {
-      if (reuse < 0 ||
-        (reuse >= 0 && voice[i].start < voice[reuse].start))
-        reuse = i;  // prefer oldest reuse
-    }
-    if (voice[i].note < 0) {
-      if (oldest < 0)
-        oldest = i;
-      if (voice[i].start < voice[oldest].start)
-        oldest = i;
-    }
-  }
-  // if oldest note is in use, prefer to reuse existing same note
-  if (oldest < 0 && reuse >= 0)
-    return reuse;
-  if (oldest < 0) {  // no unused voice, none match current note
-    oldest = steal;
-    steal += 1;  // round-robin which voice is stolen
-    steal %= maxVoices;
-  }
-  return oldest;
-}
-function noteFreq(note) {
-  return mastertune * Math.pow(2,(note-69)/12);
+    emumidi.port.postMessage(0);
 }
 
 function pitchBend(channel, value) {
@@ -1086,15 +935,6 @@ function pitchBend(channel, value) {
   notefrac[channel] = bendrange * (value - 8192.0) / 8192.0;
   bendmult[channel] = Math.pow(2,
                         (bendrange / 12) * (value - 8192.0) / 8192.0);
-  if (soundon) {
-    // modify all the playing notes on the channel by the bend value
-    for (var i = 0; i < maxVoices; i++) {
-      if (voice[i].note >= 0 && voice[i].channel == channel) {
-        voice[i].osc.frequency.setValueAtTime(voice[i].freq *
-                bendmult[channel], 0);
-      }
-    }
-  }
 }
 function stopDTMF(keyentry) {
   var v1 = keyentry.t1;
@@ -1103,110 +943,13 @@ function stopDTMF(keyentry) {
   [v1,v2].forEach(function(v) {
     if (v >= 0) {
       // immediate stop to tones
-      voice[v].env.gain.cancelScheduledValues(0);
-      voice[v].env.gain.setTargetAtTime(0.0, 0, 0.005);
-      voice[v].note = -1;
     }
   });
 }
 function startDTMF(keyentry, plan) {
-  var v = nextNote(256);
   var v1 = plan.r1;
   var v2 = plan.r2;
-  voice[v].note = 256;
-  voice[v].freq = plan.t1;
-  voice[v].osc.type = 'sine';
-  voice[v].osc.frequency.setValueAtTime(voice[v].freq, 0);
-  voice[v].start = context.currentTime;
-  voice[v].env.gain.cancelScheduledValues(0);
-  voice[v].env.gain.setTargetAtTime(v1, 0, 0.005);
-  voice[v].vpan.pan.setValueAtTime(0, context.currentTime);
-  keyentry.t1 = v;
-  v = nextNote();
-  voice[v].note = 256;
-  voice[v].freq = plan.t2;
-  voice[v].osc.type = 'sine';
-  voice[v].osc.frequency.setValueAtTime(voice[v].freq, 0);
-  voice[v].start = context.currentTime;
-  voice[v].env.gain.cancelScheduledValues(0);
-  voice[v].env.gain.setTargetAtTime(v2, 0, 0.005);
-  voice[v].vpan.pan.setValueAtTime(0, context.currentTime);
-  keyentry.t2 = v;
 }
-function startNote(channel, note, velocity) {
-  var i = nextNote(note);
-  voice[i].note = note;
-  voice[i].velocity = velocity;
-  voice[i].channel = channel;
-  voice[i].freq = noteFreq(note);
-  // DEBUG
-  if (emumidi != null) {
-    var fdata = [];
-    for (var v = 0; v < maxVoices; v++)
-      if (voice[v].note >= 0) fdata.push(voice[v].freq);
-      else fdata.push(0);
-    emumidi.port.postMessage(fdata);
-  }
-  voice[i].hold1 = false;
-  voice[i].sostenuto = false;
-  voice[i].osc.frequency.setValueAtTime(voice[i].freq *
-                                        bendmult[channel], 0);
-  voice[i].osc.type = waveform;
-  if (voice[i].start < 0)
-    voice[i].osc.start();
-  voice[i].start = context.currentTime;
-  voice[i].env.gain.cancelScheduledValues(0);
-  velocity = 0 * velocity * exp[channel] / (127 * 127);
-  voice[i].env.gain.setTargetAtTime(vMax * velocity, 0, attack);
-  voice[i].env.gain.setTargetAtTime(vMax * (sustain * velocity),
-    context.currentTime + attack, decay);
-  // 9 to 3.3 seconds of sustain to decay to -60dB
-  var sustime = 9 * Math.exp(-note/128);
-  sustime = (sustime * 2) / 10;  // convert to time constant
-  voice[i].env.gain.setTargetAtTime(0.001 / 127,
-    context.currentTime + attack + decay, sustime); 
-  voice[i].vpan.pan.setValueAtTime((vpan[channel]/64) - 1,
-                                   context.currentTime);
-}
-function stopSustain(channel) {
-  for (var i = 0; i < maxVoices; i++) {
-    if (voice[i].channel != channel)
-      continue;
-    if ((voice[i].hold1 && !hold1[channel] && !voice[i].sostenuto) ||
-       (voice[i].sostenuto && !sostenuto[channel])) {
-      voice[i].sostenuto = false;
-      voice[i].hold1 = false;
-      voice[i].env.gain.cancelScheduledValues(0);
-      voice[i].env.gain.setTargetAtTime(0.0, 0, release);
-      voice[i].note = -1;
-    }
-  }
-}
-function stopNote(channel, note) {
-  var i = findNote(note, channel);
-  if (i >= 0) {
-    voice[i].hold1 = hold1[channel];
-    if (sostenuto[channel]) {
-      voice[i].sostenuto = (sostenutolist[channel].indexOf(note) >= 0);
-    }
-    voice[i].note = -1;  // mark for early reuse even if sustained
-    if (voice[i].hold1 || voice[i].sostenuto) {
-      return;
-    }
-    voice[i].env.gain.cancelScheduledValues(0);
-    voice[i].env.gain.setTargetAtTime(0.0, 0, release);
-  }
-  // DEBUG
-  if (emumidi != null) {
-    var fdata = [];
-    for (var v = 0; v < maxVoices; v++)
-      if (voice[v].note >= 0) fdata.push(voice[v].freq);
-      else fdata.push(0);
-    emumidi.port.postMessage(fdata);
-  }
-
-}
-
 function resize()
 {
   if (canvas.width != innerWidth) {
@@ -1698,15 +1441,12 @@ function keyup(event) {
   if (showconfig) return;
   event.preventDefault();
   if (event.code == 'ControlLeft') {
-    cc67(keychan, soft[keychan] ? 0 : 127);
     return;
   }
   if (event.code == 'AltLeft') {
-    cc66(keychan, sostenuto[keychan] ? 0 : 127);
     return;
   }
   if (event.code == 'ControlRight') {
-    cc64(keychan, hold1[keychan] ? 0 : 127);
     return;
   }
   var i = keyindex(event.code);
@@ -1738,17 +1478,15 @@ function initaudio(event) {
   // patch up prefixes
   window.AudioContext=window.AudioContext||window.webkitAudioContext;
   context = new AudioContext();
-
   lfo = {
     osc: context.createOscillator(),
     env: context.createGain(),
-    freq: noteFreq(0),
+    freq: 8.125,
     start: -1,
   }
   lfo.osc.frequency.value = lfo.freq;
   lfo.osc.type = 'triangle';
   lfo.env.gain.value = 0;
-  lfo.osc.connect(lfo.env);
   lfout = context.createAnalyser();
   lfout.fftSize = 32;
   lfo.env.connect(lfout);
@@ -1763,50 +1501,27 @@ function initaudio(event) {
   fftout.smoothingTimeConstant = 0;
   fftdata = new Uint8Array(fftout.frequencyBinCount);
   mastervol.connect(fftout);
-  for (i = 0; i < maxVoices; i++) {
-    // set up the basic oscillator chain, muted to begin with.
-    var oscillator = context.createOscillator();
-    var envelope = context.createGain();
-    var pan = context.createStereoPanner();
-    oscillator.frequency.value = 0;
-    oscillator.connect(envelope);
-    lfo.env.connect(oscillator.detune);
-    pan.connect(mastervol);
-    envelope.connect(pan);
-    envelope.gain.value = 0.0;  // Mute the sound
-    voice.push({
-      start: -1,
-      note: -1,
-      velocity: 0,
-      freq: 0,
-      hold1: false,
-      sostenuto: false,
-      osc: oscillator,
-      env: envelope,
-      vpan: pan,
-    });
-  }
-  // set default panning for each channel randomly
-  for (i = 0; i < vpan.length; i++) {
-    vpan[i] = Math.floor(Math.random() * 128);
-    if (i == keychan || i == mousechan || i == touchchan) {
-      // for default non-midi sources, prefer center-ish-random
-      vpan[i] >>= 4;
-      vpan[i] += 60;
-    }
-  }
+
   context.audioWorklet.addModule('emumidi.js').then(() => {
     emumidi = new EmuMIDIProcessor(context, 'emumidi-processor', {
       numberOfInputs:0,
       numberOfOutputs:1,
       outputChannelCount: [2]
     });
-    voice[0].vpan.connect(emumidi);
+    var pan = context.createStereoPanner();
+    lfo.osc.connect(pan);
+    pan.connect(mastervol);
+    pan.connect(emumidi);
     emumidi.connect(context.destination);
-    emumidi.onprocessorerror = (event) => {
-      console.error(event.message);
+    emumidi.onprocessorerror = (e) => {
+      console.error(e);
+    }
+    emumidi.port.onmessage = emumidi.port.onmessageerror = (e) => {
+      console.log(e.data);
     }
   });
+
+
 }
 function selectmidi() {
   cfgform.midiin.options.length = 0;
@@ -1932,71 +1647,7 @@ function midimessage(event) {
     handle_midi(event.data);
   }
 }
-function cc01(channel, value) {
-  var modwheel = value / 127;
-  // do this whether or not sound is on for modulation rendering
-  lfo.env.gain.value = moddepth * modwheel;
-}
-function cc64(channel, value) {
-  hold1[channel] = (value >= 64);
-  if (!hold1[channel]) {
-    for (var i = 0; i < kct; i++)
-      keyboxes[i].held = false;
-    if (soundon) {
-      // kill all the playing notes that got noteoff already
-      stopSustain(channel);
-    }
-  }
-}
-function cc66(channel, value) {
-  sostenuto[channel] = (value >= 64);
-  if (sostenuto[channel]) {
-    // record notes currently on
-    sostenutolist[channel] = [];
-    for (var i = 0; i < kct; i++) {
-      if (keyboxes[i].pressed & (1 << channel))
-        sostenutolist[channel].push(i);
-    }
-
-  } else {
-    for (var i = 0; i < kct; i++) {
-      if (keyboxes[i].channel == channel)
-        keyboxes[i].sostenuto = false;
-    }
-    if (soundon)
-      stopSustain(channel);
-  }
-}
-function cc67(channel, value) {
-  soft[channel] = (value >= 64);
-}
-function cc10(channel, value) {
-  // 64 = center, 0 is hard left, 127 is hard right
-  vpan[channel] = value;
-  if (soundon) {
-    for (var i = 0; i < maxVoices; i++) {
-      if (voice[i].channel == channel && voice[i].note >= 0)
-        voice[i].vpan.pan.setValueAtTime((vpan[channel]/64) - 1,
-                                         context.currentTime);
-    }
-  }
-}
-function cc11(channel, value) {
-  exp[channel] = value;
-  if (soundon) {
-     for (var i = 0; i < maxVoices; i++) {
-      if (voice[i].channel == channel && voice[i].note >= 0) {
-        var velocity = voice[i].velocity * exp[channel] / (127 * 127);
-        voice[i].env.gain.cancelScheduledValues(0);
-        voice[i].env.gain.setTargetAtTime(vMax * (sustain * velocity),
-                          context.currentTime, decay);
-      }
-    }
-  }
-}
 function noteOn(channel, noteNumber, velocity) {
-  if (soft[channel])
-    velocity /= 3.0;
   noteboxes.push(new NoteBox(channel, noteNumber, velocity));
   // make sure there aren't too many noteboxes
   if (noteboxes.length > maxnoteboxes) {
@@ -2014,9 +1665,6 @@ function noteOn(channel, noteNumber, velocity) {
   if (counterbase <= 0) {  // baseline after reset on first midi note
     counterbase = context.currentTime;
   }
-  if (soundon) {
-    startNote(channel, noteNumber, velocity);
-  }
 }
 function noteOff(channel, noteNumber) {
   for (var i = 0, j = noteboxes.length; i < j; i++) {
@@ -2030,14 +1678,6 @@ function noteOff(channel, noteNumber) {
       keyboxes[noteNumber].pfill = ccolor[ch] + '55';
       keyboxes[noteNumber].sfill = ccolor[ch];
     }
-    keyboxes[noteNumber].held = hold1[channel];
-    if (sostenuto) {
-      keyboxes[noteNumber].sostenuto =
-        (sostenutolist[channel].indexOf(noteNumber) >= 0);
-    }
-  }
-  if (soundon) {
-    stopNote(channel, noteNumber);
   }
 }
 
