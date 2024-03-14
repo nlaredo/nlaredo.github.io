@@ -100,6 +100,12 @@ const CTL_POLY              = 0x7f;  /* 3rd byte 0x00 */
 
 const POLYMAX = 64;
 const NOTE_MAXLEN = Number.MAX_SAFE_INTEGER;
+const ONE_OVER_PI = (1 / Math.PI);
+
+let rate = 48000;   // will change at init to sampleRate
+let waveform = 'square';
+let debug = false;
+function send(e){ console.error(e); }
 
 let atune = 440.0;
 let samplepos = 0;  // current position in the sample output
@@ -108,8 +114,12 @@ let elist = [];
 let voice = [];     // active voices, end=0 = inactive
 let channel = [];   // presently active channel state
 
+// for volume normalization
+let finalgain = 1.0;
+
 // 16 channels of tuning adjustments for 12 notes
 let scaletune = new Array(16).fill(new Array(12).fill(1));
+let scaleTuning = 100;  // cents per key (modified by sf2)
 
 // convert a negative cB value to linear 0 - 1.0
 function cB_to_linear(cB) {
@@ -130,8 +140,8 @@ function cents_to_freqmult(cents, num, den) {
 }
 
 // convert a midi note number to floating point frequency
-function note_to_freq(note, centsperkey, ch) {
-  let freq = Math.pow(2, (note - 69) * (centsperkey / 1200)) * atune;
+function note_to_freq(note, ch) {
+  let freq = Math.pow(2, (note - 69) * (scaleTuning / 1200)) * atune;
   freq *= scaletune[ch][note % 12];
   return freq;
 }
@@ -162,6 +172,232 @@ function find_next_voice(ch, note) {
     }
   }
   return (v < POLYMAX ? v : oldest);
+}
+
+function fill_audio(left, right, lfo, len) {
+  try {
+    let max_val = 0.0;
+    let max_idx = len - 1;
+    for (let i = 0; i < len; i++) {
+      while (elist.length > 0) {
+        let todo = elist.shift(); // remove processed element
+        let ts = todo.ts;
+        let data = todo.data;
+        let cmd = data[0];
+        let ch = cmd & 0x0f;
+        if ((cmd & 0xf0) == MIDI_NOTEON && !data[2])
+          cmd = MIDI_NOTEOFF;
+        switch (cmd & 0xf0) {
+          case MIDI_NOTEOFF:
+            for (let j = 0; j < POLYMAX; j++) {
+              if (voice[j].ch == ch &&
+                  voice[j].note == data[1] &&
+                  voice[j].end == NOTE_MAXLEN) {
+                if (channel[ch].ctl[CTL_SUSTAIN] >= 64) {
+                  voice[j].sus = 1;
+                  continue;
+                }
+                voice[j].end = samplepos + voice[j].r;
+                // TODO: SF2 samplemodes
+              }
+            }
+            break;
+          case MIDI_NOTEON:
+            let v = find_next_voice(ch, data[1]);
+            if (v < POLYMAX) {
+              voice[v].note = data[1];
+              voice[v].f = note_to_freq(voice[v].note, ch);
+              voice[v].i = 2 * Math.PI * voice[v].f / rate;
+              voice[v].vel = data[2];
+              voice[v].v = data[2] / 128.0;
+              voice[v].t = 0.0;
+              voice[v].a = cents_to_freqmult(-12000, 1, 1) * rate;
+              voice[v].h = voice[v].a;
+              voice[v].d = voice[v].a;
+              voice[v].s = 1.0;
+              voice[v].r = voice[v].a;
+              voice[v].pan = channel[ch].ctl[CTL_PAN] / 127.0;
+              voice[v].ch = ch;
+              voice[v].ts = samplepos;
+              voice[v].end = NOTE_MAXLEN;
+              voice[v].inst = -1;
+              voice[v].shdr = -1;
+              if (0) {
+                // TODO: SF2 handling
+              } else {
+                if (ch == 9) {
+                  // kill percussion for non-sf2 voice
+                  voice[v].end = 0;
+                }
+                // soften attack to 20ms
+                voice[v].a = rate * 0.02;
+                // longer release (62.5ms) since no sampled release
+                voice[v].r = rate * 0.0625;
+                // decay from max value to add interest
+                voice[v].d = rate * 0.0625;
+                // to a little under half volume
+                voice[v].s = 0.4;
+              }
+            }
+            break;
+          case MIDI_KEY_PRESSURE:
+            // TODO: find voice, do something with it
+            break;
+          case MIDI_CTL_CHANGE:
+            channel[ch].ctl[data[1]] = data[2];
+            if (data[1] == CTL_DATA_ENTRY) {
+              if (channel[ch].ctl[CTL_RPN_LSB] == 0 &&
+                  channel[ch].ctl[CTL_RPN_MSB] == 0) {
+                channel[ch].bender_range = data[2];
+              }
+            }
+            if (data[1] == CTL_MODWHEEL) {
+              channel[ch].mod_mult =
+                cents_to_freqmult(47, data[2], 127) - 1.0;
+            }
+            if (data[1] == CTL_SUSTAIN && data[2] < 64) {
+              for (let j = 0; j < POLYMAX; j++) {
+                if (voice[j].ch == ch && voice[j].sus) {
+                  voice[j].sus = 0;
+                  voice[j].end = samplepos + voice[j].r;
+                  // TODO: handle SF2 samplemodes
+                }
+              }
+            }
+            break;
+          case MIDI_PGM_CHANGE:
+            channel[ch].program = data[1];
+            break;
+          case MIDI_CHN_PRESSURE:
+            channel[ch].pressure = data[1];
+            break;
+          case MIDI_PITCH_BEND:
+            channel[ch].bender = ((data[2] << 7) | data[1]);
+            channel[ch].bender_mult =
+              pitchbend_to_freqmult(channel[ch].bender,
+                                    channel[ch].bender_range);
+            break;
+          case MIDI_SYSTEM_PREFIX:
+            // for now do nothing
+            break;
+        }
+      }
+      left[i] = 0;
+      right[i] = 0;
+      let vmod = 1;
+      for (let j = 0; j < POLYMAX; j++) {
+        if (voice[j].end <= samplepos)
+          continue; // voice no longer playing
+        let tpos = samplepos - voice[j].ts; // samples since start
+        let rpos = voice[j].end - samplepos;  // release pos
+        let t = voice[j].t; // each voice has its own timebase
+        if (tpos < voice[j].a) {
+          vmod = tpos / voice[j].a; // attack phase
+        } else if (tpos < voice[j].a + voice[j].h) {
+          vmod = 1.0; // hold phase
+        } else if (voice[j].d &&
+                   tpos < voice[j].a + voice[j].h + voice[j].d) {
+          // decay phase
+          vmod = (tpos - (voice[j].a + voice[j].h)) / voice[j].d;
+          vmod *= (1.0 - voice[j].s);
+          vmod = 1.0 - vmod;
+        } else {
+          // sustain phase
+          vmod = voice[j].s;
+          if (vmod <= 0.00001) { // kill super quiet voices
+            voice[j].end = 0;
+            continue;
+          }
+        }
+        if (rpos < voice[j].r) {
+          // release phase, go from vmod down to zero, cubic decay
+          let x = rpos / voice[j].r;
+          vmod *= x * x * x;
+        }
+        let ch = voice[j].ch;
+        let pgm = channel[ch].program;
+        let sample = 0;
+        vmod *= channel[ch].ctl[CTL_MAIN_VOLUME] / 127;
+        vmod *= channel[ch].ctl[CTL_EXPRESSION] / 127;
+        vmod *= voice[j].v;
+        if (1) {
+          // not using SF2, do math-based synthesis
+          pgm = -pgm - 2;
+          // keep timebase between 0 and 2*Pi
+          if (t > 2 * Math.PI) {
+            t -= 2 * Math.PI;
+          }
+          if (t < 0) {
+            t += 2 * Math.PI;
+          }
+        } else {
+          // TODO: handle SF2 sasmplemodes, startloop/endloop
+        }
+        if (pgm < 0) {
+          // math based synthesis
+          let tri = Math.abs(ONE_OVER_PI * (t - Math.PI)) - 1.0;
+          let saw = ONE_OVER_PI * (t - Math.PI);
+          let squ = (t > Math.PI ? -1 : 1);
+          switch (waveform) {
+            case 'si':
+              sample = Math.sin(t);
+              break;
+            case 'sa':
+              sample = saw;
+              break;
+            case 'tr':
+              sample = tri;
+              break
+            default:
+              sample = squ;
+          }
+        } else {
+          // sample based synthesis
+        }
+        sample *= vmod;
+        // handle active voices panned after playback started
+        let dpan = channel[ch].ctl[CTL_PAN] / 127 - voice[j].pan;
+        voice[j].pan += dpan / rate;  // smooth pan to target over 1s
+        left[i] += sample * (1.0 - voice[j].pan);
+        right[i] += sample * voice[j].pan;
+        t += voice[j].i * channel[ch].bender_mult *
+          (channel[ch].mod_mult * lfo[0][i] + 1.0);
+        voice[j].t = t;
+      }
+      if (Math.abs(left[i]) > max_val) {
+        max_val = Math.abs(left[i]);
+        max_idx = i;
+      }
+      if (Math.abs(right[i]) > max_val) {
+        max_val = Math.abs(right[i]);
+        max_idx = i;
+      }
+      samplepos++;
+    }
+    // A smoth transition is made from the old finalgain value
+    // at the first sample to the sample offset with the maximum
+    // value of the current frame.  This could give an artifact
+    // if it happens the first sample of a frame, but random
+    // random chance puts that at 1/128 for AudioWorkletNodes
+    if (max_val < 1) {
+      max_val = 1;  // don't apply gain to quiet sections
+    }
+    let finalgain_diff = (1 / max_val) - finalgain;
+    let finalgain_old = finalgain;
+    for (let i = 0; i < len; i++) {
+      if (i < max_idx) {
+        finalgain = finalgain_old + finalgain_diff * (i / max_idx);
+      } else {
+        finalgain = 1 / max_val;
+      }
+      left[i] *= finalgain;
+      right[i] *= finalgain;
+    }
+    return true;
+  } catch (error) {
+    send(error);
+    return true;
+  }
 }
 /**
  * Message based midi playback emulation.
@@ -220,233 +456,69 @@ class EmuMIDIProcessor extends AudioWorkletProcessor {
       channel[i].ctl[CTL_EXPRESSION] = 127;
       channel[i].ctl[CTL_MAIN_VOLUME] = 127;
     }
-    this.debug = false;
-    this.waveform = 'square';
+    rate = sampleRate;
+    // make it easier to post messages
+    send = (e) => { this.port.postMessage(e) }
+    waveform = 'square';
     this.port.onmessage = (e) => {
-      if (e.data == 'sine' || e.data == 'square' ||
-          e.data == 'sawtooth' || e.data == 'triangle') {
-        this.waveform = e.data;
-      } else if (e.data == 'debug') {
-        this.debug = true;
-      } else if (e.data == 0) {
-        for (let i = 0; i < 16; i++) {
-          scaletune[i].fill(1);
-          channel[i].bender_mult = 1;
-          channel[i].bender = 8192;
-          channel[i].ctl[CTL_PAN] = Math.floor(Math.random() * 127);
-          channel[i].ctl[CTL_SUSTAIN] = 0;
-          channel[i].ctl[CTL_EXPRESSION] = 127;
-          channel[i].ctl[CTL_MAIN_VOLUME] = 127;
-        }
-        // stop all notes
-        for (let i = 0; i < POLYMAX; i++) {
-          voice[i].end = voice[i].ts = 0;
-        }
-      } else {
-        elist.push(e.data);
+      let d = e.data;
+      switch (d.constructor.name) {
+        case 'Object':
+          if (typeof(d["data"]) == 'object' &&
+              d["data"].length > 0 && d["ts"] >= 0)
+            elist.push(d);
+          else
+            send(d);
+          break;
+        case 'String':
+          if (d == 'debug') {
+            debug = true;
+          } else {
+            // only carea if the first two chars are right
+            waveform = d.substring(0,2);
+          }
+          break;
+        case 'Number':
+          if (d > 415 && d < 467) {
+            atune = d;
+          }
+          if (d > 9 && d < 400) {
+            scaleTuning = d;
+          }
+          for (let i = 0; i < 16; i++) {
+            scaletune[i].fill(1);
+            channel[i].bender_mult = 1;
+            channel[i].bender = 8192;
+            channel[i].ctl[CTL_PAN] = Math.floor(Math.random() * 127);
+            channel[i].ctl[CTL_SUSTAIN] = 0;
+            channel[i].ctl[CTL_EXPRESSION] = 127;
+            channel[i].ctl[CTL_MAIN_VOLUME] = 127;
+          }
+          // stop all notes
+          for (let i = 0; i < POLYMAX; i++) {
+            voice[i].end = voice[i].ts = 0;
+          }
+          break;
+        default:
+          send('unexpected:' + d.constructor.name);
       }
     }
     this.port.onmessageerror = (e) => {
-      console.log(e);
+      send(e);
     }
   }
 
   process(inputList, outputList, parameters) {
     if (!outputList.length)
       return;
-    const rate = sampleRate;
     const output = outputList[0];
     const lfo = inputList[0];
     const channels = output.length;
-    const f32l = output[0];
-    const f32r = (channels > 1 ? output[1]: output[0]);
-    for (let i = 0, len = f32l.length; i < len; i++) {
-      while (elist.length > 0) {
-        let todo = elist.shift(); // remove processed element
-        let ts = todo.ts;
-        let data = todo.data;
-        let cmd = data[0];
-        let ch = cmd & 0x0f;
-        //this.port.postMessage(data);
-        if ((cmd & 0xf0) == MIDI_NOTEON && !data[2])
-          cmd = MIDI_NOTEOFF;
-        switch (cmd & 0xf0) {
-          case MIDI_NOTEOFF:
-            for (let j = 0; j < POLYMAX; j++) {
-              if (voice[j].ch == ch &&
-                  voice[j].note == data[1] &&
-                  voice[j].end == NOTE_MAXLEN) {
-                if (channel[ch].ctl[CTL_SUSTAIN] >= 64) {
-                  voice[j].sus = 1;
-                  continue;
-                }
-                voice[j].end = samplepos + voice[j].r;
-                // TODO: SF2 samplemodes
-              }
-            }
-            break;
-          case MIDI_NOTEON:
-            let v = find_next_voice(ch, data[1]);
-            if (v < POLYMAX) {
-              voice[v].note = data[1];
-              voice[v].f = note_to_freq(voice[v].note, 100, ch);
-              voice[v].i = 2 * Math.PI * voice[v].f / rate;
-              voice[v].vel = data[2];
-              voice[v].v = data[2] / 128.0;
-              voice[v].t = 0.0;
-              voice[v].a = cents_to_freqmult(-12000, 1, 1) * rate;
-              voice[v].h = voice[v].a;
-              voice[v].d = voice[v].a;
-              voice[v].s = 1.0;
-              voice[v].r = voice[v].a;
-              voice[v].pan = channel[ch].ctl[CTL_PAN] / 127.0;
-              voice[v].ch = ch;
-              voice[v].ts = samplepos;
-              voice[v].end = NOTE_MAXLEN;
-              voice[v].inst = -1;
-              voice[v].shdr = -1;
-              if (0) {
-                // TODO: SF2 handling
-              } else {
-                if (ch == 9) {
-                  // kill percussion for non-sf2 voice
-                  voice[v].end = 0;
-                }
-              }
-            }
-            break;
-          case MIDI_KEY_PRESSURE:
-            // TODO: find voice, do something with it
-            break;
-          case MIDI_CTL_CHANGE:
-            channel[ch].ctl[data[1]] = data[2];
-            if (data[1] == CTL_DATA_ENTRY) {
-              if (channel[ch].ctl[CTL_RPN_LSB] == 0 &&
-                  channel[ch].ctl[CTL_RPN_MSB] == 0) {
-                channel[ch].bender_range = data[2];
-              }
-            }
-            if (data[1] == CTL_MODWHEEL) {
-              channel[ch].mod_mult =
-                cents_to_freqmult(47, data[2], 127) - 1.0;
-            }
-            if (data[1] == CTL_SUSTAIN && data[2] < 64) {
-              for (let j = 0; j < POLYMAX; j++) {
-                if (voice[j].ch == ch && voice[j].sus) {
-                  voice[j].sus = 0;
-                  voice[j].end = samplepos + voice[j].r;
-                  // TODO: handle SF2 samplemodes
-                }
-              }
-            }
-            break;
-          case MIDI_PGM_CHANGE:
-            channel[ch].program = data[1];
-            break;
-          case MIDI_CHN_PRESSURE:
-            channel[ch].pressure = data[1];
-            break;
-          case MIDI_PITCH_BEND:
-            channel[ch].bender = ((data[2] << 7) | data[1]);
-            channel[ch].bender_mult =
-              pitchbend_to_freqmult(channel[ch].bender,
-                                    channel[ch].bender_range);
-            break;
-          case MIDI_SYSTEM_PREFIX:
-            // for now do nothing
-            break;
-        }
-      }
-      let left = 0;
-      let right = 0;
-      let vmod = 1;
-      for (let j = 0; j < POLYMAX; j++) {
-        if (voice[j].end < samplepos)
-          continue; // voice no longer playing
-        let tpos = samplepos - voice[j].ts; // samples since start
-        let rpos = voice[j].endstamp - samplepos;  // release pos
-        let t = voice[j].t; // each voice has its own timebase
-        if (tpos < voice[j].a) {
-          vmod = tpos / voice[j].a; // attack phase
-        } else if (tpos < voice[j].a + voice[j].h) {
-          vmod = 1.0; // hold phase
-        } else if (tpos < voice[j].a + voice[j].h + voice[j].d) {
-          // decay phase
-          vmod = tpos - (voice[j].a + voice[j].h) / voice[j].d;
-          vmod *= 1.0 - voice[j].s;
-          vmod = 1.0 - vmod;
-        } else {
-          // sustain phase
-          vmod = voice[j].s;
-          if (vmod <= 0.00001) { // kill super quiet voices
-            voice[j].end = 0;
-          }
-        }
-        if (rpos < voice[j].r) {
-          // release phase, go from vmod down to zero, cubic decay
-          let x = rpos / voice[j].env.r;
-          vmod *= x * x * x;
-        }
-        let ch = voice[j].ch;
-        let pgm = channel[ch].program;
-        let sample = 0;
-        vmod *= channel[ch].ctl[CTL_MAIN_VOLUME] / 127;
-        vmod *= channel[ch].ctl[CTL_EXPRESSION] / 127;
-        vmod *= voice[j].v;
-        if (1) {
-          // not using SF2, do math-based synthesis
-          pgm = -pgm - 2;
-          // keep timebase between 0 and 2*Pi
-          if (t > 2 * Math.PI) {
-            t -= 2 * Math.PI;
-          }
-          if (t < 0) {
-            t += 2 * Math.PI;
-          }
-        } else {
-          // TODO: handle SF2 sasmplemodes, startloop/endloop
-        }
-        if (pgm < 0) {
-          // math based synthesis
-          let tri = Math.abs(0.3184 * (t - Math.PI)) - 1.0;
-          let saw = t / Math.PI;
-          let squ = (t > Math.PI ? -1 : 1);
-          switch (this.waveform) {
-            case 'sine':
-              sample = Math.sin(t);
-              break;
-            case 'sawtooth':
-              sample = saw;
-              break;
-            case 'triangle':
-              sample = tri;
-              break
-            default:
-              sample = squ;
-          }
-        } else {
-          // sample based synthesis
-        }
-        sample *= vmod;
-        // handle active voices panned after playback started
-        let dpan = channel[ch].ctl[CTL_PAN] / 127 - voice[j].pan;
-        voice[j].pan += dpan / rate;  // smooth pan to target over 1s
-        left += sample * (1.0 - voice[j].pan);
-        right += sample * voice[j].pan;
-        t += voice[j].i * channel[ch].bender_mult *
-          (channel[ch].mod_mult * lfo[0][i] + 1.0);
-        voice[j].t = t;
-      }
-      f32l[i] = left/10;
-      f32r[i] = right/10;
-      samplepos++;
-      if (this.debug) {
-        if ((samplepos & 0xfffff) == 0) {
-          this.port.postMessage([voice,channel]);
-        }
-      }
-    }
-    return true;
+    let left = output[0];
+    let right = (channels > 1 ? output[1]: output[0]);
+    let len = left.length;
+    let res = fill_audio(left, right, lfo, len);
+    return res;
   }
 }
 

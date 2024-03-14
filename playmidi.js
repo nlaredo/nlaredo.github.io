@@ -27,6 +27,7 @@ class EmuMIDIProcessor extends AudioWorkletNode {
 }
 var context=null;	// the Web Audio "context" object
 var emumidi=null;       // AudioWorkletNode
+function send(e){ console.error(e); }
 var midiAccess=null;	// the MIDIAccess object.
 var lfo;                // for tracking synth LFO
 var lfout;              // for drawing LFO data
@@ -1520,6 +1521,8 @@ function initaudio(event) {
     emumidi.port.onmessage = emumidi.port.onmessageerror = (e) => {
       console.log(e.data);
     }
+    // make it easier to post messages
+    send = (e) => { emumidi.port.postMessage(e) }
   });
 
 
