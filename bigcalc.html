@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html>
+ <head>
+ <meta charset="utf-8">
+ <link rel="preconnect" href="https://fonts.googleapis.com">
+ <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+ <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:ital,wght@0,100..700;1,100..700&display=swap" rel="stylesheet">
+ <title>BigCalc - Arbitrary Precision Calculator</title>
+ <meta name="viewport" content=
+   "width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+ <meta name="color-scheme" content="dark">
+ <style>
+  body {
+    border:0; width:100%; margin: 0; color:#eef; background:#003;
+    font-family: "Roboto Mono", monospace; font-size: 20px;
+    overflow:hidden;
+  }
+  @media screen and (orientation: portrait) {
+    #calc {
+      width:100vw;
+      height:100vh;
+      align-items: center;
+      justify-content: center;
+      display:flex;
+      flex-flow: column wrap;
+      flex: 2 0 90%;
+      margin:0;
+      border:0;
+    }
+    #outputs {
+      width:99vw;
+      height:calc(99vh - 500px);
+      display:flex;
+      margin:0;
+      border:0;
+    }
+    #inputs {
+      height:500px;
+      max-width:480px;
+      aspect-ratio: 1/1;
+      display:inline-grid;
+      grid-template-columns: repeat(5, 20%);
+      gap: 2px;
+      grid-template-rows: repeat(6, 16%);
+      margin:0;
+      border:0;
+    }
+  }
+  @media screen and (orientation: landscape) {
+    #calc {
+      width:100vw;
+      height:100vh;
+      align-items: center;
+      justify-content: center;
+      display:flex;
+      flex-flow: row wrap;
+      flex: 2 0 90%;
+      margin:0;
+      border:0;
+    }
+    #outputs {
+      height:100vmin;
+      width:calc(99vw - 480px);
+      min-width:10px;
+      display:flex;
+      margin:0;
+      border:0;
+    }
+    #inputs {
+      aspect-ratio: 1/1;
+      width:480px;
+      display:inline-grid;
+      grid-template-columns: repeat(5, 20%);
+      gap: 2px;
+      grid-template-rows: repeat(6, 16%);
+      margin-top:auto;
+      margin-bottom: 0;
+      border:0;
+    }
+  }
+  #display {
+    padding:8px;
+    color:#eef;
+    background:#002;
+    width:100%;
+    overflow-wrap:anywhere;
+    overflow-y:scroll;
+    flex: 1;
+  }
+  .box:before {
+    content: "";
+    display: block;
+    padding-bottom: 90%;
+  }
+  .box {
+    margin: 3px;
+    user-select:none;
+    position:relative;
+    background:#005;
+    border:2px solid #889;
+    border-radius: 10%;
+    font-weight: bold;
+    text-align: center;
+    align-items: center;
+    justify-content: center;
+    display:flex;
+  }
+  .box:hover { border:2px solid #fff; }
+  #box0 { grid-column:2/4; width:auto; }
+  #boxp { grid-column:5; grid-row:3/5; }
+  #boxe { grid-column:5; grid-row:5/7; }
+ </style>
+ </head>
+<body>
+<!-- Global site tag (gtag.js) - Google Analytics -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-J4DSMHX8B7"></script>
+<script>
+ window.dataLayer = window.dataLayer || [];
+ function gtag(){dataLayer.push(arguments);}
+ gtag('js', new Date());
+
+ gtag('config', 'G-J4DSMHX8B7');
+</script>
+<div id="calc">
+
+  <div id="outputs">
+    <div id="display" contenteditable></div>
+  </div>
+  <div id="inputs">
+
+    <div class="box" id="AC">AC</div>
+    <div class="box" id="atan">atan(𝒙)</div>
+    <div class="box" id="rsqrt">1/√𝒙</div>
+    <div class="box" id="sqrt">√𝒙</div>
+    <div class="box" id="bs">⌫</div>
+
+    <div class="box" id="abs">abs</div>
+    <div class="box" id="recip">1/x</div>
+    <div class="box" id="boxd">/</div>
+    <div class="box" id="boxt">×</div>
+    <div class="box" id="boxm">-</div>
+
+    <div class="box" id="b2">base2</div>
+    <div class="box" id="box7">7</div>
+    <div class="box" id="box8">8</div>
+    <div class="box" id="box9">9</div>
+    <div class="box" id="boxp">+</div>
+
+    <div class="box" id="b16">base16</div>
+    <div class="box" id="box4">4</div>
+    <div class="box" id="box5">5</div>
+    <div class="box" id="box6">6</div>
+
+    <div class="box" id="b10">base10</div>
+    <div class="box" id="box1">1</div>
+    <div class="box" id="box2">2</div>
+    <div class="box" id="box3">3</div>
+    <div class="box" id="boxe">=</div>
+
+    <div class="box" id="bits">bits</div>
+    <div class="box" id="box0">0</div>
+    <div class="box" id="p">.</div>
+
+  </div>
+</div>
+<script src="bigfloat.js">
+</script>
+</body>
+</html>
