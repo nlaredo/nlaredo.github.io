@@ -83,11 +83,12 @@
     color:#eef;
     background:#002;
     width:100%;
+    font-size:10px;
     overflow-wrap:anywhere;
     overflow-y:scroll;
     flex: 1;
   }
-  .box:before {
+  .box::before {
     content: "";
     display: block;
     padding-bottom: 90%;
@@ -107,8 +108,11 @@
   }
   .box:hover { border:2px solid #fff; }
   #box0 { grid-column:2/4; width:auto; }
-  #boxp { grid-column:5; grid-row:3/5; }
-  #boxe { grid-column:5; grid-row:5/7; }
+  #add { grid-column:5; grid-row:3/5; }
+  #equals { grid-column:5; grid-row:5/7; }
+  #bitnum { font-size:10px; display:block; clear:both; }
+  #unbox { display:block; }
+
  </style>
  </head>
 <body>
@@ -124,46 +128,66 @@
 <div id="calc">
 
   <div id="outputs">
-    <div id="display" contenteditable></div>
+    <div id="display" contenteditable spellcheck="false"></div>
   </div>
   <div id="inputs">
 
-    <div class="box" id="AC">AC</div>
+    <div class="box" id="allclear">AC</div>
     <div class="box" id="atan">atan(𝒙)</div>
     <div class="box" id="rsqrt">1/√𝒙</div>
     <div class="box" id="sqrt">√𝒙</div>
-    <div class="box" id="bs">⌫</div>
+    <div class="box" id="backspace">⌫</div>
 
     <div class="box" id="abs">abs</div>
     <div class="box" id="recip">1/x</div>
-    <div class="box" id="boxd">/</div>
-    <div class="box" id="boxt">×</div>
-    <div class="box" id="boxm">-</div>
+    <div class="box" id="divide">/</div>
+    <div class="box" id="multiply">×</div>
+    <div class="box" id="subtract">-</div>
 
-    <div class="box" id="b2">base2</div>
+    <div class="box" id="base2">base2</div>
     <div class="box" id="box7">7</div>
     <div class="box" id="box8">8</div>
     <div class="box" id="box9">9</div>
-    <div class="box" id="boxp">+</div>
+    <div class="box" id="add">+</div>
 
-    <div class="box" id="b16">base16</div>
+    <div class="box" id="base16">base16</div>
     <div class="box" id="box4">4</div>
     <div class="box" id="box5">5</div>
     <div class="box" id="box6">6</div>
 
-    <div class="box" id="b10">base10</div>
+    <div class="box" id="base10">base10</div>
     <div class="box" id="box1">1</div>
     <div class="box" id="box2">2</div>
     <div class="box" id="box3">3</div>
-    <div class="box" id="boxe">=</div>
+    <div class="box" id="equals">=</div>
 
-    <div class="box" id="bits">bits</div>
+    <div class="box" id="bits">
+      <div class="unbox">
+        <div>bits</div>
+        <div id="bitnum">1000</div>
+      </div>
+    </div>
     <div class="box" id="box0">0</div>
-    <div class="box" id="p">.</div>
+    <div class="box" id="point">.</div>
 
   </div>
 </div>
-<script src="bigfloat.js">
+<script src="bigfloat.js"></script>
+<script>
+  let io = document.getElementById("display");
+  const fn = [
+    "allclear", "atan", "rsqrt", "sqrt", "backspace",
+    "abs", "recip", "divide", "multiply", "base2", "add",
+    "base16", "base10", "equals", "bits", "point"
+  ];
+  let fun = [];
+  for (let i = 0; i < fn.length; i++) {
+    fun.push(document.getElementById(fn[i]));
+  }
+  let num = [];
+  for (let i = 0; i < 10; i++) {
+    num.push(document.getElementById("box" + i));
+  }
 </script>
 </body>
 </html>
