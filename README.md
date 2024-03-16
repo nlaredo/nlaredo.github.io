@@ -3,6 +3,7 @@
 * [LICENSE](LICENSE) - GNU General Public License v3.0
 * [Makefile](Makefile) - mandelbrot.c WASM builder
 * [README.md](README.md) - this page
+* [bigcalc.html](bigcalc.html) - Arbitrary precision BigFloat calculator
 * [canvas-template.html](canvas-template.html) - html5/js demo template
 * [clock-test.html](clock-test.html) - lots of clocks, lots of speeds
 * [favicon.ico](favicon.ico) - small icon file reading "NIL"
