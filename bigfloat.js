@@ -294,7 +294,7 @@
     sin() { console.log("sin"); }
     sinh() { console.log("sinh"); }
     reciprocal() {  // calculate 1/x
-      a = new BigFloat(1, this.bits);
+      let a = new BigFloat(1, this.bits);
       a.divide(this);
       this.assign(a);
       return;

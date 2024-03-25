@@ -41,7 +41,7 @@
       display:inline-grid;
       grid-template-columns: repeat(5, 20%);
       gap: 2px;
-      grid-template-rows: repeat(6, 16%);
+      grid-template-rows: repeat(8, 11.9%);
       margin:0;
       border:0;
     }
@@ -72,7 +72,7 @@
       display:inline-grid;
       grid-template-columns: repeat(5, 20%);
       gap: 2px;
-      grid-template-rows: repeat(6, 16%);
+      grid-template-rows: repeat(8, 11.9%);
       margin-top:auto;
       margin-bottom: 0;
       border:0;
@@ -86,6 +86,7 @@
     font-size:10px;
     overflow-wrap:anywhere;
     overflow-y:scroll;
+    white-space:pre-wrap;
     flex: 1;
   }
   .box::before {
@@ -108,8 +109,8 @@
   }
   .box:hover { border:2px solid #fff; }
   #box0 { grid-column:2/4; width:auto; }
-  #add { grid-column:5; grid-row:3/5; }
-  #equals { grid-column:5; grid-row:5/7; }
+  #add { grid-column:5; grid-row:5/7; }
+  #equals { grid-column:5; grid-row:7/9; }
   #bitnum { font-size:10px; display:block; clear:both; }
   #unbox { display:block; }
 
@@ -132,30 +133,42 @@
   </div>
   <div id="inputs">
 
-    <div class="box" id="allclear">AC</div>
-    <div class="box" id="atan">atan(𝒙)</div>
-    <div class="box" id="rsqrt">1/√𝒙</div>
-    <div class="box" id="sqrt">√𝒙</div>
-    <div class="box" id="backspace">⌫</div>
+    <div class="box" id="allClear">AC</div>
+    <div class="box" id="memClear">MC</div>
+    <div class="box" id="memRecall">MR</div>
+    <div class="box" id="memPlus">M+</div>
+    <div class="box" id="backSpace">⌫</div>
 
-    <div class="box" id="abs">abs</div>
+    <div class="box" id="atan">atan(𝒙)</div>
+    <div class="box" id="sqrt">√𝒙</div>
+    <div class="box" id="rsqrt">1/√𝒙</div>
     <div class="box" id="recip">1/x</div>
     <div class="box" id="divide">/</div>
+
+    <div class="box" id="abs">abs</div>
+    <div class="box" id="box13">d</div>
+    <div class="box" id="box14">e</div>
+    <div class="box" id="box15">f</div>
     <div class="box" id="multiply">×</div>
-    <div class="box" id="subtract">-</div>
 
     <div class="box" id="base2">base2</div>
+    <div class="box" id="box10">a</div>
+    <div class="box" id="box11">b</div>
+    <div class="box" id="box12">c</div>
+    <div class="box" id="subtract">-</div>
+
+    <div class="box" id="base8">base8</div>
     <div class="box" id="box7">7</div>
     <div class="box" id="box8">8</div>
     <div class="box" id="box9">9</div>
     <div class="box" id="add">+</div>
 
-    <div class="box" id="base16">base16</div>
+    <div class="box" id="base10">base10</div>
     <div class="box" id="box4">4</div>
     <div class="box" id="box5">5</div>
     <div class="box" id="box6">6</div>
 
-    <div class="box" id="base10">base10</div>
+    <div class="box" id="base16">base16</div>
     <div class="box" id="box1">1</div>
     <div class="box" id="box2">2</div>
     <div class="box" id="box3">3</div>
@@ -175,18 +188,93 @@
 <script src="bigfloat.js"></script>
 <script>
   let io = document.getElementById("display");
+  function addText(text) {
+    //document.execCommand("insertHTML", false, text);
+    //return;
+    let selection = window.getSelection();
+    let range = selection.getRangeAt(0);
+    // replace any currently selected text
+    range.deleteContents();
+    // set start and end positions to the cursor postion
+    range.setStart(selection.anchorNode, selection.anchorOffset);
+    range.setEnd(selection.anchorNode, selection.anchorOffset);
+    // insert the text into the range
+    if (text == "\n") {
+      let frag = new DocumentFragment();
+      let newdiv = document.createElement("div");
+      let newbr = document.createElement("br");
+      newdiv.appendChild(newbr);
+      frag.appendChild(newdiv);
+      range.insertNode(frag);
+    } else {
+      range.insertNode(document.createTextNode(text));
+    }
+    // don't leave range selected
+    range.collapse();
+  }
+  io.focus();
+  io.addEventListener("paste", (e) => {
+    e.preventDefault();
+    const text = e.clipboardData.getData('text/plain');
+    addText(text);
+  });
+  function allClear() {
+    let selection = window.getSelection();
+    // check if anything is left to remove
+    if (selection.anchorNode == io) return;
+    let range = selection.getRangeAt(0);
+    range.setStart(selection.anchorNode, 0);
+    range.setEndAfter(selection.anchorNode);
+    selection.removeAllRanges();
+    selection.addRange(range);
+    selection.deleteFromDocument();
+  }
+  function inputs() { /* do nothing */ }
+  function memClear() {  }
+  function memRecall() {  }
+  function memPlus() {  }
+  function backSpace() {  }
+  function atan() {  }
+  function sqrt() {  }
+  function recip() {  }
+  function divide() { addText("/"); }
+  function abs() {  }
+  function multiply() { addText("*"); }
+  function base2() {  }
+  function subtract() { addText("-"); }
+  function base8() {  }
+  function add() { addText("+"); }
+  function base10() {  }
+  function base16() {  }
+  function equals() { addText("="); addText("\n"); }
+  function bits() {  }
+  function point() { addText("."); }
   const fn = [
-    "allclear", "atan", "rsqrt", "sqrt", "backspace",
-    "abs", "recip", "divide", "multiply", "base2", "add",
-    "base16", "base10", "equals", "bits", "point"
+    "inputs", "allClear", "memClear", "memRecall", "memPlus",
+    "backSpace", "atan", "sqrt", "rsqrt", "recip", "divide",
+    "abs", "multiply", "base2", "subtract", "base8", "add",
+    "base10", "base16", "equals", "bits", "point"
   ];
   let fun = [];
   for (let i = 0; i < fn.length; i++) {
     fun.push(document.getElementById(fn[i]));
+    fun[i].addEventListener("mousedown", (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      console.log(fun[i].id);
+      window[fun[i].id](e);
+      return false;
+    });
   }
   let num = [];
-  for (let i = 0; i < 10; i++) {
+  for (let i = 0; i < 16; i++) {
     num.push(document.getElementById("box" + i));
+    num[i].addEventListener("mousedown", (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      addText(num[i].innerText);
+      return false;
+    });
   }
 </script>
 </body>
