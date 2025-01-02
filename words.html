@@ -231,7 +231,12 @@
  </div>
  <div id="huh" class="info moved">Guess any five letter word
    in the dictionary...</div>
- <div id="win" class="info right">Awesome!  Great work!</div>
+ <div id="win6" class="info right">Solved it!</div>
+ <div id="win5" class="info right">Great!</div>
+ <div id="win4" class="info right">Well done!</div>
+ <div id="win3" class="info right">Impressive!</div>
+ <div id="win2" class="info right">Amazing!</div>
+ <div id="win1" class="info right">Psychic!</div>
  <div id="end" class="info wrong">Game Over</div>
  <div id="gamestats" class="scrollbox">
    <h1>Game Statistics</h1>
@@ -2162,7 +2167,14 @@ const unitymap = "QWERTYUIOPASDFGHJKLZXCVBNM";
 const alphamap = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 const dbox = document.getElementById('date');
 const huh = document.getElementById('huh'); 
-const win = document.getElementById('win'); 
+const win = new Array(
+  document.getElementById('win1'),
+  document.getElementById('win2'),
+  document.getElementById('win3'),
+  document.getElementById('win4'),
+  document.getElementById('win5'),
+  document.getElementById('win6'),
+);
 const end = document.getElementById('end'); 
 const prev = document.getElementById('prev'); 
 const next = document.getElementById('next'); 
@@ -2268,7 +2280,12 @@ function updateKeys() {
 function hideInfo() {
   clearTimeout();  // cancel any pending auto-hide
   huh.style.display = '';
-  win.style.display = '';
+  win1.style.display = '';
+  win2.style.display = '';
+  win3.style.display = '';
+  win4.style.display = '';
+  win5.style.display = '';
+  win6.style.display = '';
   end.style.display = '';
   wordlist.style.display = '';
 }
@@ -2328,7 +2345,7 @@ function handleEnter() {
     }
   }
   if (right == 5) {
-    showInfo(win);
+    showInfo(win[Math.floor(pos / 5)]);
   }
   // valid guess, update cursor
   if (cursor < 25) {
