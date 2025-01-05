@@ -194,7 +194,7 @@
 
  gtag('config', 'G-J4DSMHX8B7');
 </script>
- <div id="date" class="control">2015-10-21</div>
+ <div class="control"><a id="date" title="today" href="#">2021-06-19</a></div>
  <div class="control">
    <div class="nav" id="prev" aria-label="previous puzzle">&#9665;</div>
    <div class="nav" id="help" aria-label="help">?</div>
@@ -2507,7 +2507,7 @@ setupInput();
 function setPuzzleHash(offset) {
   window.onhashchange = null;
   const baseUrl = window.location.href.split('#')[0];
-  window.location.replace(baseUrl + '#' + (pnum + offset));;
+  window.location.replace(baseUrl + '#' + (pnum + offset));
   window.onhashchange = showPuzzleDate;
 }
 function showPuzzleDate() {
