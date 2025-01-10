@@ -169,6 +169,7 @@
     font-size:12px;
     position:absolute;
   }
+  .max { color: #f88; }
   @keyframes flip {
     0% { transform: rotateY(90deg); }
     100% { transform: rotateY(360deg); }
@@ -2165,6 +2166,7 @@ const puzzles = [
 ];
 const unitymap = "QWERTYUIOPASDFGHJKLZXCVBNM";
 const alphamap = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+const sdate = new Date("2021-06-19 00:00");
 const dbox = document.getElementById('date');
 const huh = document.getElementById('huh'); 
 const win = new Array(
@@ -2188,11 +2190,13 @@ let remapkeys = false;
 let box = Array(30); // on screen box objects
 let key = Array(29); // on screen key objects
 let freqCount = Array(26);
+let freqMax = 0;
 let freqWords = 0;
 let boxstate = Array(30);
 let goodchars = '01234';
 let havechars = '';
 let badchars = '';
+let squares = [ '&#x1f7e5;', '&#x1f7e8;', '&#x1f7e9;' ];
 let pnum = 0;
 let cursor = 0;
 function resetGame() {
@@ -2212,36 +2216,41 @@ function updateStats(wantList = false) {
   const pos = cursor % 5;
   let candidates = [];
   let j;
-  for (let i = 0; i < words.length; i++) {
+  freqMax = 0;
+  for (let i = 0; i < puzzles.length; i++) {
+    const pi = puzzles[i];
     for (j = 0; j < 5; j++) {
       const ch = goodchars.charAt(j);
-      if (ch >= 'a' && words[i].charAt(j) != ch) {
+      if (ch >= 'a' && words[pi].charAt(j) != ch) {
         break;
       }
     }
     if (j < 5) continue; // skip words without good letters
     for (j = 0; j < badchars.length; j++) {
       const ch = badchars.charAt(j);
-      if (words[i].indexOf(ch) >= 0) {
+      if (words[pi].indexOf(ch) >= 0) {
         break;
       }
     }
     if (j < badchars.length) continue; // skip words with bad letters
     for (j = 0; j < cursor; j++) {
       if (boxstate[j] == 'moved') {
-        if (words[i].charAt(j % 5) == box[j].innerHTML) {
+        if (words[pi].charAt(j % 5) == box[j].innerHTML) {
           break;  // word has moved letter in wrong spot
         }
-        if (words[i].indexOf(box[j].innerHTML) < 0) {
+        if (words[pi].indexOf(box[j].innerHTML) < 0) {
           break;  // word is lacking moved letter
         }
       }
     }
     if (j < cursor) continue; // skip words with good letter in wrong place
-    freqCount[words[i].charCodeAt(pos) - 97]++;
+    let index = words[pi].charCodeAt(pos) - 97;
+    freqCount[index]++;
+    if (freqCount[index] > freqCount[freqMax])
+      freqMax = index;
     freqWords++;
     if (wantList) {
-      candidates.push(words[i]);
+      candidates.push(words[pi]);
     }
   }
   if (wantList) {
@@ -2256,7 +2265,8 @@ function updateKeys() {
   }
   for (let i = 0; i < 26; i++) {
     const ch = (remapkeys ? alphamap : unitymap).charAt(i);
-    const pct = 100 * freqCount[ch.charCodeAt(0)-65]/freqWords;
+    const index = ch.charCodeAt(0)-65
+    const pct = 100 * freqCount[index]/freqWords;
     const c = ch.toLowerCase();
     if (badchars.indexOf(c) >= 0) {
       key[i].className = 'wrong';
@@ -2268,8 +2278,10 @@ function updateKeys() {
       key[i].className = null;
     }
     if (pct) {
+      const p = pct < 100 ? Math.round(pct * 10) / 10 : 100;
+      const m = index == freqMax ? " max" : "";
       key[i].innerHTML =
-        `${ch}<div class="stats">${Math.round(pct)}%</div>`;
+        `${ch}<div class="stats${m}">${p < 0 ? p + 100 : p}%</div>`;
     } else {
       key[i].innerHTML = ch;
     }
@@ -2289,7 +2301,7 @@ function hideInfo() {
   end.style.display = '';
   wordlist.style.display = '';
 }
-function showInfo(info, timeout = 8000) {
+function showInfo(info, timeout = 10000) {
   hideInfo();
   info.style.display = 'block';
   setTimeout(hideInfo, timeout);  // auto-hide in timeout ms
@@ -2513,8 +2525,10 @@ function setPuzzleHash(offset) {
 function showPuzzleDate() {
   const oldPnum = pnum;
   let pdate = new Date();
-  pnum = Math.floor(pdate.setHours(0,0,0,0)  / 86400000
-        - 253) % puzzles.length;
+  pdate.setHours(0,0,0,0);
+  pnum = Math.floor((pdate - sdate) / 86400000) % puzzles.length;
+  if (pnum < 0)
+    pnum = 0;
   let hnum = window.location.hash ? window.location.hash.substr(1)|0 : -1;
   let offset = 0;
   if (hnum >= 0 && hnum < Number.MAX_SAFE_INTEGER) {
