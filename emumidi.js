@@ -141,7 +141,12 @@ function cents_to_freqmult(cents, num, den) {
 
 // convert a midi note number to floating point frequency
 function note_to_freq(note, ch) {
-  let freq = Math.pow(2, (note - 69) * (scaleTuning / 1200)) * atune;
+  let rnote = note;  // relative note to 100 cent scale
+  if (scaleTuning > 100) {
+    let rscale = 100 / scaleTuning;
+    rnote = Math.floor(rscale * (note - 69) + 69.5);
+  }
+  let freq = Math.pow(2, (rnote - 69) * (scaleTuning / 1200)) * atune;
   freq *= scaletune[ch][note % 12];
   return freq;
 }

@@ -439,6 +439,12 @@ function addText(type, text) {
   if (lasttext[type] == text)
     return;
   lasttext[type] = text;
+  // overwrite consecutive tempo messages
+  i = textlines.length;
+  if (i && i > 1 && type == meta.SET_TEMPO &&
+      (textlines[i - 1].type & 0x7f) == type) {
+    textlines.pop();
+  }
   // continue the line if it starts with lower case or space
   if ((type == meta.TEXT_EVENT || type == meta.LYRIC) &&
       ((s >= 'a' && s <= 'z') || s == ' ' || type == meta.LYRIC)) {
@@ -724,7 +730,7 @@ function prepMIDI(f) {
 function stopMIDI() {
   playing = false;
   play.value = 'Play\n' + (tsnow / 1000).toFixed(1);
-  play.style.background="";
+  play.className = "";
 }
 function prevMIDI() {
   var stop = true;
@@ -756,7 +762,7 @@ function nextMIDI() {
 function playPause() {
   playing = !playing;
   if (playing) {
-    play.style.background="#ffd";
+    play.className = "active";
   } else {
     stopAllNotes();
     stopMIDI();
@@ -1632,9 +1638,9 @@ function midimessage(event) {
       playPause();
   } else if (event.data[0] == midi_sys.TIMING_CLOCK) {
     if  (tempo.beats % 24 < 12) {
-      taptempo.style.background="#ff0";
+      taptempo.className = "active";
     } else {
-      taptempo.style.background="";
+      taptempo.className = "";
     }
     if (tempo.beats % 24 == 0) {
       tempo.last = now;
@@ -2321,9 +2327,9 @@ function animate(timestamp) {
       tick = tsnow - tempo.first;
     }
     if (1 & Math.floor(tick / (tempo.avgms / 2)))
-        taptempo.style.background="";
+        taptempo.className = "";
       else
-        taptempo.style.background="#ffd";
+        taptempo.className = "active";
   }
   ctx.save()
   ctx.font = '14px monospace';

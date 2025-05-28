@@ -12,7 +12,7 @@
     canvas { background:#007; }
     #config {
       position:fixed; top:75px; right:25px; left:25px;
-      border:3px solid #ccd; background:#00007777; color:#ccd;
+      border:3px solid #ccd; background:#00007788; color:#ccd;
       padding:25px; font:1em sans-serif; overflow-y:auto;
       bottom: 76px;
     }
@@ -21,6 +21,25 @@
       grid-template-rows: repeat(4, 2em);
       grid-template-columns: repeat(4, 1fr);
       grid-auto-flow: column;
+    }
+    select, ::picker(select) {
+      appearance: base-select;
+      background:#007;
+      color:#ccd;
+      border:1px solid #ccd;
+      box-shadow: 0px;
+      border-radius:6px;
+    }
+    option:hover { background:#00f; color:#ff0; }
+    option:checked { background:#00f; }
+    option:checked:hover { color:#ff0; }
+    select:hover {
+      background:#00f;
+      border:1px solid #cff;
+    }
+    select:open::picker-icon {
+      transition: 0.5s rotate;
+      rotate: 90deg;
     }
     .container2 {
       display:grid;
@@ -36,7 +55,34 @@
     a:hover { text-decoration:underline; }
     a:active { background:#f44; color:#ffe; }
     h1,h2,h3,h4,p { text-align: center }
-    input { width:4em; }
+    input {
+      width:3em;
+      background:#007;
+      color:#ccd;
+      border:1px solid #ccd;
+      box-shadow: 0;
+      accent-color: #007;
+      border-radius:6px;
+    }
+    input:hover { background:#00f; border:1px solid #cff;}
+    input[type=checkbox] {
+      all:unset;
+      width:1em;
+      height:1em;
+      margin:0 1em 0 1em;
+      display:inline-block;
+      border:1px solid #ccd;
+      border-radius:50%;
+    }
+    input[type=checkbox]:hover {
+      background:#00f;
+      border:1px solid #cff;
+    }
+    input[type=checkbox]:checked { background:#7f7; }
+    input[type=checkbox]:checked:hover {
+      background:#f00;
+      border:1px solid #cff;
+    }
     span { display:inline-block; width:5em; }
     select { width:11em; }
     label,input { margin:1px; }
@@ -46,10 +92,18 @@
     .ccontainer div { margin:auto; width:8em; padding:1px; }
     .container2 div { margin:auto; width:16em; padding:1px; }
     input[type=button],input[type=submit] {
-      background: #ccd; width:8em; height:2em;
+      width:8em; height:2em;
     }
-    input[type=file] { width:24em; }
-    .active { background:#070; }
+    #upload { width:27em; color:inherit; background:inherit; }
+    #upload::file-selector-button:hover {
+      background:#00f; border:1px solid #cff;
+    }
+    #upload::file-selector-button {
+      background:#007;
+      color:inherit;
+      border:1px solid #ccd;
+      box-shadow: 0;
+    }
     #transport {
       display:flex;
       width:100%;
@@ -90,7 +144,7 @@ href="https://www.gnu.org/licenses/">https://www.gnu.org/licenses/</a>.
 <canvas id="keyboard"></canvas>
 <div id="config">
 <h1>PlayMIDI Settings</h1>
-<h2>v20240312 - Follow development at:
+<h2>v20250528 - Follow development at:
 <a href="http://twitch.tv/nil4k">twitch.tv/nil4k</a>
 and <a href="http://github.com/nlaredo">GitHub</a>
 and <a href="http://youtube.com/NathanILaredo">YouTube</a></h2>
@@ -100,7 +154,7 @@ while playing...</p>
 in this browser window or by the file dialog at the bottom of
 the settings.</p>
 <form id="cfgform" action="#">
-<p><input type="submit" value="Dismiss"></p>
+<p><input type="submit" class="active" value="Dismiss"></p>
 <div class="container2">
 <div><label><input name="soundon" type="checkbox" value="soundon"
 checked> Sounds</input></label>
