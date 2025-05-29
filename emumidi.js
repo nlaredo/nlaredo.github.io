@@ -115,7 +115,11 @@ let voice = [];     // active voices, end=0 = inactive
 let channel = [];   // presently active channel state
 
 // for volume normalization
+let targetLUFS = 0.2;   // -14LUFS by default
+let loudness = 0;       // avg loudness measurement
 let finalgain = 1.0;
+const loudnessseconds = 0.4;
+let loudnesstimer = 0;
 
 // 16 channels of tuning adjustments for 12 notes
 let scaletune = new Array(16).fill(new Array(12).fill(1));
@@ -181,8 +185,7 @@ function find_next_voice(ch, note) {
 
 function fill_audio(left, right, lfo, len) {
   try {
-    let max_val = 0.0;
-    let max_idx = len - 1;
+    let pmax = 0;  // max squared sample value per window
     for (let i = 0; i < len; i++) {
       while (elist.length > 0) {
         let todo = elist.shift(); // remove processed element
@@ -369,34 +372,37 @@ function fill_audio(left, right, lfo, len) {
           (channel[ch].mod_mult * lfo[0][i] + 1.0);
         voice[j].t = t;
       }
-      if (Math.abs(left[i]) > max_val) {
-        max_val = Math.abs(left[i]);
-        max_idx = i;
+      var lp = left[i] * left[i];
+      var rp = right[i] * right[i];
+      if (lp > pmax) {
+        pmax = lp;
       }
-      if (Math.abs(right[i]) > max_val) {
-        max_val = Math.abs(right[i]);
-        max_idx = i;
+      if (rp > pmax) {
+        pmax = rp;
       }
       samplepos++;
     }
-    // A smoth transition is made from the old finalgain value
-    // at the first sample to the sample offset with the maximum
-    // value of the current frame.  This could give an artifact
-    // if it happens the first sample of a frame, but random
-    // random chance puts that at 1/128 for AudioWorkletNodes
-    if (max_val < 1) {
-      max_val = 1;  // don't apply gain to quiet sections
+    // every 400ms start a new average
+    loudnesstimer += len / rate;
+    if (loudnesstimer > loudnessseconds) {
+      loudness = Math.sqrt(pmax) * finalgain;
+      loudnesstimer = 0;
+    } else {
+      loudness = 0.5 * (loudness + Math.sqrt(pmax) * finalgain);
     }
-    let finalgain_diff = (1 / max_val) - finalgain;
-    let finalgain_old = finalgain;
+    // find gain to apply to hit targetLUFS based on running loudness
+    let desiredgain = finalgain * targetLUFS / loudness;
+    // apply some sanity limits to finalgain
+    if (desiredgain > 1) {
+      desiredgain = 1;
+    }
+    let deltagain = desiredgain - finalgain;
+    deltagain /= 1024;  // match linux playmidi samplecount
+    // apply gain correction over sample length above
     for (let i = 0; i < len; i++) {
-      if (i < max_idx) {
-        finalgain = finalgain_old + finalgain_diff * (i / max_idx);
-      } else {
-        finalgain = 1 / max_val;
-      }
       left[i] *= finalgain;
       right[i] *= finalgain;
+      finalgain += deltagain;
     }
     return true;
   } catch (error) {
@@ -490,18 +496,27 @@ class EmuMIDIProcessor extends AudioWorkletProcessor {
           if (d > 9 && d < 400) {
             scaleTuning = d;
           }
-          for (let i = 0; i < 16; i++) {
-            scaletune[i].fill(1);
-            channel[i].bender_mult = 1;
-            channel[i].bender = 8192;
-            channel[i].ctl[CTL_PAN] = Math.floor(Math.random() * 127);
-            channel[i].ctl[CTL_SUSTAIN] = 0;
-            channel[i].ctl[CTL_EXPRESSION] = 127;
-            channel[i].ctl[CTL_MAIN_VOLUME] = 127;
+          if (d < 0.0 && d >= -120.0) {  // target loudness (LUFS)
+            targetLUFS = Math.pow(10, d / 20.0);
+            send([loudness, finalgain]);
           }
-          // stop all notes
-          for (let i = 0; i < POLYMAX; i++) {
-            voice[i].end = voice[i].ts = 0;
+          if (d == 0.0) {
+            loudness = 0;
+            loudnesstimer = 0;
+            for (let i = 0; i < 16; i++) {
+              scaletune[i].fill(1);
+              channel[i].bender_mult = 1;
+              channel[i].bender_range = 2;
+              channel[i].bender = 8192;
+              channel[i].ctl[CTL_PAN] = Math.floor(Math.random() * 127);
+              channel[i].ctl[CTL_SUSTAIN] = 0;
+              channel[i].ctl[CTL_EXPRESSION] = 127;
+              channel[i].ctl[CTL_MAIN_VOLUME] = 127;
+            }
+            // stop all notes
+            for (let i = 0; i < POLYMAX; i++) {
+              voice[i].end = voice[i].ts = 0;
+            }
           }
           break;
         default:
